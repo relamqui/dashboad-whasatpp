@@ -370,6 +370,9 @@ def list_users():
 @admin_required
 def create_user():
     data = request.json
+    if not data.get('filial_id') or not data.get('setor_id'):
+        return jsonify({'error': 'Filial e Setor são obrigatórios'}), 400
+
     if User.query.filter_by(email=data['email']).first():
         return jsonify({'error': 'E-mail já cadastrado'}), 400
     
@@ -379,7 +382,9 @@ def create_user():
         phone=data.get('phone'),
         password=data.get('password'),
         role='user',
-        instances=[]
+        instances=[],
+        filial_id=data.get('filial_id'),
+        setor_id=data.get('setor_id')
     )
     db_sql.session.add(new_user)
     db_sql.session.commit()
@@ -401,12 +406,19 @@ def manage_user(user_id):
     
     if request.method == 'PUT':
         data = request.json
+        if not data.get('filial_id') or not data.get('setor_id'):
+            return jsonify({'error': 'Filial e Setor são obrigatórios'}), 400
+
         user.name = data.get('name', user.name)
         user.email = data.get('email', user.email)
         if 'phone' in data:
             user.phone = data.get('phone')
         if data.get('password'):
             user.password = data['password']
+        if 'filial_id' in data:
+            user.filial_id = data.get('filial_id')
+        if 'setor_id' in data:
+            user.setor_id = data.get('setor_id')
         db_sql.session.commit()
         return jsonify({
             'id': user.id,
@@ -526,6 +538,9 @@ def gestor_manage_users():
 
     if request.method == 'POST':
         data = request.json
+        if not data.get('filial_id') or not data.get('setor_id'):
+            return jsonify({'error': 'Filial e Setor são obrigatórios'}), 400
+
         email = data.get('email')
         instances_to_assign = set(data.get('instances', []))
 
@@ -588,6 +603,9 @@ def gestor_update_user(user_id):
 
     if request.method == 'PUT':
         data = request.json
+        if not data.get('filial_id') or not data.get('setor_id'):
+            return jsonify({'error': 'Filial e Setor são obrigatórios'}), 400
+
         target_user.name = data.get('name', target_user.name)
         if 'phone' in data:
             target_user.phone = data.get('phone')

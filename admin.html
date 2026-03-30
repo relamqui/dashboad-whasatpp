@@ -306,17 +306,17 @@
           <input type="password" id="userPassword" placeholder="Deixe em branco para manter">
         </div>
         <div class="form-group">
-          <label>Filial (Opcional)</label>
-          <select id="userFilial" onchange="filterSetores()"
+          <label>Filial</label>
+          <select id="userFilial" onchange="filterSetores()" required
             style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary); outline: none;">
-            <option value="">Nenhuma</option>
+            <option value="">Selecione uma filial</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Setor (Opcional)</label>
-          <select id="userSetor"
+          <label>Setor</label>
+          <select id="userSetor" required
             style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary); outline: none;">
-            <option value="">Nenhum</option>
+            <option value="">Selecione um setor</option>
           </select>
         </div>
         <div class="modal-actions">
@@ -558,18 +558,18 @@
       filSel.innerHTML = allFiliais.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
 
       const setSel = document.getElementById('userSetor');
-      setSel.innerHTML = '<option value="">Nenhum</option>' +
+      setSel.innerHTML = '<option value="">Selecione um setor</option>' +
         allSetores.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
         
       const userFilSel = document.getElementById('userFilial');
-      userFilSel.innerHTML = '<option value="">Nenhuma</option>' + 
+      userFilSel.innerHTML = '<option value="">Selecione uma filial</option>' + 
         allFiliais.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
     }
 
     function filterSetores() {
       const filIdStr = document.getElementById('userFilial').value;
       const setSel = document.getElementById('userSetor');
-      setSel.innerHTML = '<option value="">Nenhum</option>';
+      setSel.innerHTML = '<option value="">Selecione um setor</option>';
       if (filIdStr) {
         const filId = parseInt(filIdStr);
         setSel.innerHTML += allSetores.filter(s => s.filial_id === filId).map(s => `<option value="${s.id}">${s.name}</option>`).join('');
