@@ -1,6 +1,7 @@
 
 import os
 import jwt
+import uuid
 import datetime
 from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory
@@ -14,6 +15,8 @@ import io
 from flask import Response
 
 load_dotenv()
+
+CORPAL_WEBHOOK_URL = 'https://n8n-n8n.ioms5g.easypanel.host/webhook/corpal-metrica'
 
 app = Flask(__name__)
 CORS(app)
@@ -43,13 +46,26 @@ db_sql = SQLAlchemy(app)
 
 # ─── Modelos do Banco de Dados ──────────────────────────────────────────────
 
+class Filial(db_sql.Model):
+    id = db_sql.Column(db_sql.Integer, primary_key=True)
+    name = db_sql.Column(db_sql.String(100), nullable=False)
+    instance = db_sql.Column(db_sql.String(100), nullable=False)
+
+class Setor(db_sql.Model):
+    id = db_sql.Column(db_sql.Integer, primary_key=True)
+    name = db_sql.Column(db_sql.String(100), nullable=False)
+    filial_id = db_sql.Column(db_sql.Integer, db_sql.ForeignKey('filial.id'), nullable=False)
+
 class User(db_sql.Model):
     id = db_sql.Column(db_sql.Integer, primary_key=True)
     name = db_sql.Column(db_sql.String(100), nullable=False)
     email = db_sql.Column(db_sql.String(120), unique=True, nullable=False)
+    phone = db_sql.Column(db_sql.String(30), nullable=True)
     password = db_sql.Column(db_sql.String(200), nullable=False)
     role = db_sql.Column(db_sql.String(20), default='user')
     instances = db_sql.Column(db_sql.JSON, default=[]) # Nomes das instâncias vinculadas
+    filial_id = db_sql.Column(db_sql.Integer, db_sql.ForeignKey('filial.id'), nullable=True)
+    setor_id = db_sql.Column(db_sql.Integer, db_sql.ForeignKey('setor.id'), nullable=True)
 
 class Contact(db_sql.Model):
     id = db_sql.Column(db_sql.String(150), primary_key=True) # c_phone_instance
@@ -61,6 +77,8 @@ class Contact(db_sql.Model):
     last_msg = db_sql.Column(db_sql.Text, nullable=True)
     last_msg_time = db_sql.Column(db_sql.String(10), nullable=True)
     unread = db_sql.Column(db_sql.Integer, default=0)
+    assigned_to = db_sql.Column(db_sql.Integer, db_sql.ForeignKey('user.id'), nullable=True)
+    assigned_name = db_sql.Column(db_sql.String(100), nullable=True)
 
 class Message(db_sql.Model):
     id = db_sql.Column(db_sql.String(100), primary_key=True)
@@ -114,6 +132,28 @@ def load_db():
 def migrate_to_sql():
     with app.app_context():
         db_sql.create_all()
+        
+        # Add new columns if missing
+        try:
+            db_sql.session.execute(db_sql.text('ALTER TABLE "user" ADD COLUMN filial_id INTEGER REFERENCES filial(id)'))
+            db_sql.session.execute(db_sql.text('ALTER TABLE "user" ADD COLUMN setor_id INTEGER REFERENCES setor(id)'))
+            db_sql.session.commit()
+        except Exception:
+            db_sql.session.rollback()
+            
+        try:
+            db_sql.session.execute(db_sql.text('ALTER TABLE "user" ADD COLUMN phone VARCHAR(30)'))
+            db_sql.session.commit()
+        except Exception:
+            db_sql.session.rollback()
+        
+        # Add assignment columns to contact
+        try:
+            db_sql.session.execute(db_sql.text('ALTER TABLE contact ADD COLUMN assigned_to INTEGER REFERENCES "user"(id)'))
+            db_sql.session.execute(db_sql.text('ALTER TABLE contact ADD COLUMN assigned_name VARCHAR(100)'))
+            db_sql.session.commit()
+        except Exception:
+            db_sql.session.rollback()
         
         # Se Users estiver vazio, tenta migrar do JSON
         if User.query.first() is None:
@@ -204,6 +244,15 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated
 
+def admin_or_gestor_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        role = request.user.get('role')
+        if role not in ('admin', 'gestor'):
+            return jsonify({'error': 'Acesso negado. Apenas administradores ou gestores.'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
 @app.route('/api/health')
 def health():
     return jsonify({
@@ -211,6 +260,64 @@ def health():
         'port': 3008,
         'evolution_url': os.getenv('EVOLUTION_API_URL')
     })
+
+@app.route('/api/bot/tags', methods=['POST'])
+def add_bot_tag():
+    """Rota para o N8N (ou outro bot) adicionar etiquetas via API"""
+    data = request.json
+    if not data:
+        return jsonify({'error': 'Body vazio'}), 400
+        
+    phone = data.get('phone')
+    inst = data.get('instance')
+    filial = data.get('filial')
+    setor = data.get('setor')
+    custom_tag = data.get('tag')
+    
+    if not phone or not inst:
+        return jsonify({'error': 'phone e instance são obrigatórios'}), 400
+        
+    phone = normalize_br_phone(str(phone))
+    contact_id = f"c_{phone}_{inst}"
+    
+    contact = Contact.query.filter_by(id=contact_id).first()
+    if not contact:
+        contact = Contact(
+            id=contact_id, name=f"+{phone}", phone=phone,
+            avatar=phone[0] if phone else "?", instance=inst,
+            tags=['Novo Lead'], last_msg='', last_msg_time='', unread=0
+        )
+        db_sql.session.add(contact)
+        db_sql.session.flush()
+        
+    tags = list(contact.tags or [])
+    new_tags_added = False
+    
+    if filial and setor:
+        tag_str = f"{filial} - {setor}"
+        if tag_str not in tags:
+            tags.append(tag_str)
+            new_tags_added = True
+    elif filial:
+        if filial not in tags:
+            tags.append(filial)
+            new_tags_added = True
+            
+    if custom_tag and custom_tag not in tags:
+        tags.append(custom_tag)
+        new_tags_added = True
+        
+    if new_tags_added:
+        contact.tags = tags
+        db_sql.session.commit()
+        socketio.emit('chat_tags_updated', {
+            'id': contact.id,
+            'tags': contact.tags
+        })
+        
+    return jsonify({'success': True, 'tags': contact.tags}), 200
+
+# ─── Webhooks Evolution API ────────────────────────────────────────────────────────────
 
 # ─── Auth Routes ────────────────────────────────────────────────────────────
 
@@ -252,6 +359,7 @@ def list_users():
             'id': u.id,
             'name': u.name,
             'email': u.email,
+            'phone': u.phone,
             'role': u.role,
             'instances': u.instances or []
         })
@@ -268,6 +376,7 @@ def create_user():
     new_user = User(
         name=data.get('name'),
         email=data.get('email'),
+        phone=data.get('phone'),
         password=data.get('password'),
         role='user',
         instances=[]
@@ -294,6 +403,8 @@ def manage_user(user_id):
         data = request.json
         user.name = data.get('name', user.name)
         user.email = data.get('email', user.email)
+        if 'phone' in data:
+            user.phone = data.get('phone')
         if data.get('password'):
             user.password = data['password']
         db_sql.session.commit()
@@ -301,6 +412,7 @@ def manage_user(user_id):
             'id': user.id,
             'name': user.name,
             'email': user.email,
+            'phone': user.phone,
             'role': user.role
         })
     
@@ -336,6 +448,166 @@ def link_instance():
     db_sql.session.commit()
     return jsonify({'success': True, 'instances': user.instances})
 
+# ─── Gestor / Filial / Setor Routes ─────────────────────────────────────────
+
+@app.route('/api/admin/filiais', methods=['GET', 'POST'])
+@auth_required
+@admin_or_gestor_required
+def manage_filiais():
+    if request.method == 'POST':
+        data = request.json
+        name = data.get('name')
+        instance = data.get('instance')
+        
+        if not name or not instance:
+            return jsonify({'error': 'Nome e Instância são obrigatórios'}), 400
+            
+        user = User.query.get(request.user['id'])
+        if user.role == 'gestor' and instance not in (user.instances or []):
+            return jsonify({'error': 'Você não tem permissão para gerenciar esta instância.'}), 403
+
+        nova_filial = Filial(name=name, instance=instance)
+        db_sql.session.add(nova_filial)
+        db_sql.session.commit()
+        return jsonify({'id': nova_filial.id, 'name': nova_filial.name, 'instance': nova_filial.instance}), 201
+
+    user = User.query.get(request.user['id'])
+    allowed_instances = user.instances or [] if user.role == 'gestor' else None
+
+    if allowed_instances is not None:
+        filiais = Filial.query.filter(Filial.instance.in_(allowed_instances)).all()
+    else:
+        filiais = Filial.query.all()
+        
+    return jsonify([{'id': f.id, 'name': f.name, 'instance': f.instance} for f in filiais])
+
+@app.route('/api/admin/setores', methods=['GET', 'POST'])
+@auth_required
+@admin_or_gestor_required
+def manage_setores():
+    if request.method == 'POST':
+        data = request.json
+        name = data.get('name')
+        filial_id = data.get('filial_id')
+        
+        if not name or not filial_id:
+            return jsonify({'error': 'Nome e Filial são obrigatórios'}), 400
+
+        filial = Filial.query.get(filial_id)
+        if not filial:
+            return jsonify({'error': 'Filial não encontrada'}), 400
+
+        user = User.query.get(request.user['id'])
+        if user.role == 'gestor' and filial.instance not in (user.instances or []):
+            return jsonify({'error': 'Sem permissão para esta filial.'}), 403
+
+        novo_setor = Setor(name=name, filial_id=filial_id)
+        db_sql.session.add(novo_setor)
+        db_sql.session.commit()
+        return jsonify({'id': novo_setor.id, 'name': novo_setor.name, 'filial_id': novo_setor.filial_id}), 201
+
+    user = User.query.get(request.user['id'])
+    if user.role == 'gestor':
+        allowed_instances = user.instances or []
+        allowed_filiais = Filial.query.filter(Filial.instance.in_(allowed_instances)).all()
+        allowed_f_ids = [f.id for f in allowed_filiais]
+        setores = Setor.query.filter(Setor.filial_id.in_(allowed_f_ids)).all()
+    else:
+        setores = Setor.query.all()
+
+    return jsonify([{'id': s.id, 'name': s.name, 'filial_id': s.filial_id} for s in setores])
+
+@app.route('/api/gestor/users', methods=['GET', 'POST'])
+@auth_required
+@admin_or_gestor_required
+def gestor_manage_users():
+    user_req = User.query.get(request.user['id'])
+    allowed_instances = set(user_req.instances or []) if user_req.role == 'gestor' else None
+
+    if request.method == 'POST':
+        data = request.json
+        email = data.get('email')
+        instances_to_assign = set(data.get('instances', []))
+
+        if allowed_instances is not None:
+            if not instances_to_assign.issubset(allowed_instances) or not instances_to_assign:
+                return jsonify({'error': 'Você só pode criar usuários para suas próprias instâncias. Deve selecionar pelo menos uma.'}), 403
+        
+        if User.query.filter_by(email=email).first():
+            return jsonify({'error': 'E-mail já cadastrado'}), 400
+
+        novo_usr = User(
+            name=data.get('name'),
+            email=email,
+            phone=data.get('phone'),
+            password=data.get('password', '123456'),
+            role='user',
+            instances=list(instances_to_assign),
+            filial_id=data.get('filial_id'),
+            setor_id=data.get('setor_id')
+        )
+        db_sql.session.add(novo_usr)
+        db_sql.session.commit()
+
+        return jsonify({'id': novo_usr.id, 'name': novo_usr.name, 'email': novo_usr.email}), 201
+
+    # GET
+    all_users = User.query.filter(User.role == 'user').all()
+    if allowed_instances is not None:
+        visible_users = [u for u in all_users if set(u.instances or []).intersection(allowed_instances)]
+    else:
+        visible_users = all_users
+
+    users_list = []
+    for u in visible_users:
+        users_list.append({
+            'id': u.id,
+            'name': u.name,
+            'email': u.email,
+            'phone': u.phone,
+            'instances': u.instances or [],
+            'filial_id': u.filial_id,
+            'setor_id': u.setor_id
+        })
+    return jsonify(users_list)
+
+@app.route('/api/gestor/users/<int:user_id>', methods=['PUT', 'DELETE'])
+@auth_required
+@admin_or_gestor_required
+def gestor_update_user(user_id):
+    target_user = User.query.get(user_id)
+    if not target_user or target_user.role != 'user':
+        return jsonify({'error': 'Usuário não encontrado ou não permitido'}), 404
+
+    user_req = User.query.get(request.user['id'])
+    allowed_instances = set(user_req.instances or []) if user_req.role == 'gestor' else None
+    
+    if allowed_instances is not None:
+        if not set(target_user.instances or []).intersection(allowed_instances):
+             return jsonify({'error': 'Você não tem permissão sobre este usuário'}), 403
+
+    if request.method == 'PUT':
+        data = request.json
+        target_user.name = data.get('name', target_user.name)
+        if 'phone' in data:
+            target_user.phone = data.get('phone')
+        if data.get('password'):
+            target_user.password = data['password']
+        if 'instances' in data and (allowed_instances is None or set(data['instances']).issubset(allowed_instances)):
+            target_user.instances = list(data['instances'])
+        if 'filial_id' in data:
+            target_user.filial_id = data.get('filial_id')
+        if 'setor_id' in data:
+            target_user.setor_id = data.get('setor_id')
+            
+        db_sql.session.commit()
+        return jsonify({'success': True})
+
+    if request.method == 'DELETE':
+        db_sql.session.delete(target_user)
+        db_sql.session.commit()
+        return jsonify({'success': True})
+
 @app.route('/api/whatsapp/instances', methods=['GET'])
 @auth_required
 def get_instances():
@@ -366,6 +638,12 @@ def send_message():
     
     if not inst or not number:
         return jsonify({'error': 'Instância e número são obrigatórios'}), 400
+
+    # --- Chat locking check ---
+    contact_id_check = f"c_{number}_{inst}"
+    locked_contact = Contact.query.filter_by(id=contact_id_check).first()
+    if locked_contact and locked_contact.assigned_to and locked_contact.assigned_to != request.user['id']:
+        return jsonify({'error': f'Chat sendo atendido por {locked_contact.assigned_name or "outro atendente"}. Não é possível enviar mensagens.'}), 403
 
     try:
         now = datetime.datetime.now()
@@ -434,6 +712,36 @@ def send_message():
                 print(f"Erro ao disparar webhook N8N para atendente: {w_e}")
                 
         db_sql.session.commit()
+
+        # --- Corpal Webhook (Attendant sent message) ---
+        try:
+            user_obj = User.query.get(request.user['id'])
+            _contact_send = Contact.query.filter_by(id=contact_id).first()
+            _filial = None
+            _setor = None
+            if user_obj:
+                if user_obj.filial_id:
+                    _f = Filial.query.get(user_obj.filial_id)
+                    _filial = _f.name if _f else None
+                if user_obj.setor_id:
+                    _s = Setor.query.get(user_obj.setor_id)
+                    _setor = _s.name if _s else None
+            corpal_payload = {
+                "evento": "mensagem",
+                "atendimento_id": str(uuid.uuid4()),
+                "numero_lead": number,
+                "instancia": inst,
+                "filial": _filial,
+                "setor": _setor,
+                "nome_atendente": user_obj.name if user_obj else "Desconhecido",
+                "atendente_id": str(user_obj.id) if user_obj else None,
+                "direcao": "atendente",
+                "mensagem": text,
+                "timestamp": now.isoformat()
+            }
+            requests.post(CORPAL_WEBHOOK_URL, json=corpal_payload, timeout=5)
+        except Exception as corpal_e:
+            print(f"Erro webhook corpal (send): {corpal_e}")
         return jsonify(res_data)
     except Exception as e:
         print(f"Erro ao enviar: {str(e)}")
@@ -744,15 +1052,20 @@ def bot_message_webhook():
         contact_id = f"c_{phone}_{inst}"
         
         # Update Contact
+        # Update Contact
         contact = Contact.query.filter_by(id=contact_id).first()
         if contact:
             contact.last_msg = text
             contact.last_msg_time = time_str
+            tags = list(contact.tags or [])
+            if 'BOT' not in tags:
+                tags.append('BOT')
+                contact.tags = tags
         else:
             new_contact = Contact(
                 id=contact_id, name=f"+{phone}", phone=phone,
                 avatar=phone[0] if phone else "?", instance=inst,
-                tags=['Novo Lead'], last_msg=text, last_msg_time=time_str, unread=0
+                tags=['Novo Lead', 'BOT'], last_msg=text, last_msg_time=time_str, unread=0
             )
             db_sql.session.add(new_contact)
             
@@ -873,6 +1186,36 @@ def webhook():
                 db_sql.session.add(new_msg)
             db_sql.session.commit()
 
+            # --- Corpal Webhook (Lead or outgoing message) ---
+            try:
+                _contact_for_webhook = Contact.query.filter_by(id=contact_id).first()
+                _att_user = User.query.get(_contact_for_webhook.assigned_to) if _contact_for_webhook and _contact_for_webhook.assigned_to else None
+                _filial_wh = None
+                _setor_wh = None
+                if _att_user:
+                    if _att_user.filial_id:
+                        _f = Filial.query.get(_att_user.filial_id)
+                        _filial_wh = _f.name if _f else None
+                    if _att_user.setor_id:
+                        _s = Setor.query.get(_att_user.setor_id)
+                        _setor_wh = _s.name if _s else None
+                corpal_payload = {
+                    "evento": "mensagem",
+                    "atendimento_id": str(uuid.uuid4()),
+                    "numero_lead": phone,
+                    "instancia": instance,
+                    "filial": _filial_wh,
+                    "setor": _setor_wh,
+                    "nome_atendente": _contact_for_webhook.assigned_name if _contact_for_webhook and _contact_for_webhook.assigned_name else "",
+                    "atendente_id": str(_att_user.id) if _att_user else None,
+                    "direcao": "lead" if not fromMe else "atendente",
+                    "mensagem": text,
+                    "timestamp": now.isoformat()
+                }
+                requests.post(CORPAL_WEBHOOK_URL, json=corpal_payload, timeout=5)
+            except Exception as corpal_e:
+                print(f"Erro webhook corpal (webhook): {corpal_e}")
+
             # Emitir evento com texto processado para o frontend
             emit_data = dict(data)
             emit_data['_processed_text'] = text
@@ -906,7 +1249,9 @@ def get_contacts():
             'tags': c.tags or [],
             'lastMsg': c.last_msg,
             'time': c.last_msg_time,
-            'unread': c.unread
+            'unread': c.unread,
+            'assigned_to': c.assigned_to,
+            'assigned_name': c.assigned_name
         })
     return jsonify(contacts_list)
 
@@ -952,6 +1297,145 @@ def get_messages(id):
             'timestamp': m.timestamp
         })
     return jsonify(msgs_list)
+
+# ─── Atendimento (Assign / Release) ─────────────────────────────────────────
+
+@app.route('/api/contacts/<id>/assign', methods=['POST'])
+@auth_required
+def assign_chat(id):
+    """Atender: atribui o chat ao usuário logado."""
+    contact = Contact.query.filter_by(id=id).first()
+    if not contact:
+        return jsonify({'error': 'Contato não encontrado'}), 404
+    
+    if contact.assigned_to and contact.assigned_to != request.user['id']:
+        return jsonify({'error': f'Chat já está sendo atendido por {contact.assigned_name}'}), 409
+    
+    user = User.query.get(request.user['id'])
+    contact.assigned_to = user.id
+    contact.assigned_name = user.name
+    
+    tags = list(contact.tags or [])
+    if 'BOT' in tags:
+        tags.remove('BOT')
+    atendente_tag = f"Atendente: {user.name}"
+    if atendente_tag not in tags:
+        tags.append(atendente_tag)
+    contact.tags = tags
+    
+    db_sql.session.commit()
+    
+    # Corpal Webhook — evento atender
+    try:
+        now = datetime.datetime.now()
+        _filial_a = None
+        _setor_a = None
+        if user.filial_id:
+            _f = Filial.query.get(user.filial_id)
+            _filial_a = _f.name if _f else None
+        if user.setor_id:
+            _s = Setor.query.get(user.setor_id)
+            _setor_a = _s.name if _s else None
+        corpal_payload = {
+            "evento": "atender",
+            "atendimento_id": str(uuid.uuid4()),
+            "numero_lead": contact.phone,
+            "instancia": contact.instance,
+            "filial": _filial_a,
+            "setor": _setor_a,
+            "nome_atendente": user.name,
+            "atendente_id": str(user.id),
+            "direcao": None,
+            "mensagem": None,
+            "timestamp": now.isoformat()
+        }
+        requests.post(CORPAL_WEBHOOK_URL, json=corpal_payload, timeout=5)
+    except Exception as e:
+        print(f"Erro webhook corpal (assign): {e}")
+    
+    socketio.emit('chat_assignment', {
+        'contact_id': id,
+        'assigned_to': user.id,
+        'assigned_name': user.name,
+        'tags': contact.tags,
+        'action': 'assign'
+    })
+    
+    return jsonify({
+        'success': True,
+        'assigned_to': user.id,
+        'assigned_name': user.name,
+        'tags': contact.tags
+    })
+
+@app.route('/api/contacts/<id>/release', methods=['POST'])
+@auth_required
+def release_chat(id):
+    """Finalizar atendimento: libera o chat."""
+    contact = Contact.query.filter_by(id=id).first()
+    if not contact:
+        return jsonify({'error': 'Contato não encontrado'}), 404
+    
+    # Apenas o atendente atual ou admin podem finalizar
+    if contact.assigned_to and contact.assigned_to != request.user['id'] and request.user.get('role') != 'admin':
+        return jsonify({'error': 'Apenas o atendente atual pode finalizar o atendimento'}), 403
+    
+    user = User.query.get(request.user['id'])
+    old_name = contact.assigned_name or user.name
+    contact.assigned_to = None
+    contact.assigned_name = None
+    
+    tags = list(contact.tags or [])
+    atendente_tag = f"Atendente: {old_name}"
+    if atendente_tag in tags:
+        tags.remove(atendente_tag)
+    contact.tags = tags
+    
+    db_sql.session.commit()
+    
+    # Corpal Webhook — evento finalizar
+    try:
+        now = datetime.datetime.now()
+        _old_user = User.query.get(request.user['id'])
+        _filial_r = None
+        _setor_r = None
+        if _old_user:
+            if _old_user.filial_id:
+                _f = Filial.query.get(_old_user.filial_id)
+                _filial_r = _f.name if _f else None
+            if _old_user.setor_id:
+                _s = Setor.query.get(_old_user.setor_id)
+                _setor_r = _s.name if _s else None
+        corpal_payload = {
+            "evento": "finalizar",
+            "atendimento_id": str(uuid.uuid4()),
+            "numero_lead": contact.phone,
+            "instancia": contact.instance,
+            "filial": _filial_r,
+            "setor": _setor_r,
+            "nome_atendente": old_name,
+            "atendente_id": str(request.user['id']),
+            "direcao": None,
+            "mensagem": None,
+            "timestamp": now.isoformat()
+        }
+        requests.post(CORPAL_WEBHOOK_URL, json=corpal_payload, timeout=5)
+    except Exception as e:
+        print(f"Erro webhook corpal (release): {e}")
+    
+    # Emitir socket para todos os clientes atualizarem
+    socketio.emit('chat_assignment', {
+        'contact_id': id,
+        'assigned_to': None,
+        'assigned_name': None,
+        'tags': contact.tags,
+        'action': 'release'
+    })
+    
+    return jsonify({
+        'success': True,
+        'tags': contact.tags
+    })
 
 @app.route('/api/admin/settings', methods=['GET', 'POST'])
 @auth_required

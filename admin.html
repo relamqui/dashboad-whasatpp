@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -9,72 +10,262 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/dashboard.css" />
   <style>
-    body { height: auto; overflow: auto; }
-    .admin-container { padding: 40px; max-width: 1000px; margin: 0 auto; }
-    .admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 30px; }
-    .user-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 24px; margin-bottom: 20px; position: relative; }
-    .user-info { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
-    .user-circle { width: 48px; height: 48px; border-radius: 50%; background: var(--green); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; color: white; }
-    .instances-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
-    .instance-link-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 10px; }
-    .checkbox-wrap { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; color: var(--text-primary); }
-    .checkbox-wrap input { width: 18px; height: 18px; accent-color: var(--green); }
-    .back-btn { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); text-decoration: none; font-size: 14px; margin-bottom: 20px; border: none; background: none; cursor: pointer; }
-    .back-btn:hover { color: var(--text-primary); }
-    
-    .btn-add-user { background: var(--green); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; }
-    .card-actions { position: absolute; top: 24px; right: 24px; display: flex; gap: 12px; }
-    .action-btn { background: none; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: 0.2s; }
-    .action-btn:hover { background: rgba(255,255,255,0.05); }
-    .btn-edit { color: var(--text-secondary); }
-    .btn-delete { color: var(--error); }
-    
+    body {
+      height: auto;
+      overflow: auto;
+    }
+
+    .admin-container {
+      padding: 40px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .admin-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 30px;
+    }
+
+    .user-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+      position: relative;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .user-circle {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--green);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 20px;
+      color: white;
+    }
+
+    .instances-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+    }
+
+    .instance-link-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    .checkbox-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--text-primary);
+    }
+
+    .checkbox-wrap input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--green);
+    }
+
+    .back-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      margin-bottom: 20px;
+      border: none;
+      background: none;
+      cursor: pointer;
+    }
+
+    .back-btn:hover {
+      color: var(--text-primary);
+    }
+
+    .btn-add-user {
+      background: var(--green);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .card-actions {
+      position: absolute;
+      top: 24px;
+      right: 24px;
+      display: flex;
+      gap: 12px;
+    }
+
+    .action-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+      border-radius: 4px;
+      transition: 0.2s;
+    }
+
+    .action-btn:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .btn-edit {
+      color: var(--text-secondary);
+    }
+
+    .btn-delete {
+      color: var(--error);
+    }
+
     /* Modal Styles */
-    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; }
-    .modal-content { background: var(--bg-card); border: 1px solid var(--border); padding: 32px; border-radius: 20px; width: 400px; }
-    .form-group { margin-bottom: 16px; }
-    .form-group label { display: block; margin-bottom: 8px; font-size: 13px; color: var(--text-secondary); }
-    .form-group input { width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary); outline: none; }
-    .modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
-    .btn-cancel { background: none; border: 1px solid var(--border); color: var(--text-secondary); padding: 10px 20px; border-radius: 8px; cursor: pointer; }
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-content {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      padding: 32px;
+      border-radius: 20px;
+      width: 400px;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 12px;
+      border-radius: 10px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      outline: none;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .btn-cancel {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
   </style>
 </head>
+
 <body>
   <div class="admin-container">
     <button class="back-btn" onclick="location.href='dashboard.html'">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="19" y1="12" x2="5" y2="12" />
+        <polyline points="12 19 5 12 12 5" />
+      </svg>
       Voltar ao Dashboard
     </button>
-    
+
     <div class="admin-header">
       <div>
         <!-- Integrações -->
-      <section class="admin-section">
-        <div class="section-header">
-          <h3>Integrações com N8N (Webhooks por Instância)</h3>
-        </div>
-        <div class="form-group" style="padding: 20px; background: var(--panel-bg); border-radius: 12px; border: 1px solid var(--border-color);">
-          <div id="webhooksList">
-             <div style="color:var(--text-muted); font-size: 13px;">Carregando instâncias...</div>
+        <section class="admin-section" id="integracoesSection">
+          <div class="section-header">
+            <h3>Integrações com N8N (Webhooks por Instância)</h3>
           </div>
-          <button class="btn-save-notes" style="margin-top: 15px;" onclick="saveWebhooks()">Salvar Todos os Webhooks</button>
-          <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
-            Cada instância envia mensagens pro seu respectivo bot no N8N.
-          </p>
-        </div>
-      </section>
+          <div class="form-group"
+            style="padding: 20px; background: var(--panel-bg); border-radius: 12px; border: 1px solid var(--border-color);">
+            <div id="webhooksList">
+              <div style="color:var(--text-muted); font-size: 13px;">Carregando instâncias...</div>
+            </div>
+            <button class="btn-save-notes" style="margin-top: 15px;" onclick="saveWebhooks()">Salvar Todos os
+              Webhooks</button>
+            <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
+              Cada instância envia mensagens pro seu respectivo bot no N8N.
+            </p>
+          </div>
+        </section>
 
-      <!-- Botões de Ação -->
+        <!-- Filiais e Setores -->
+        <section class="admin-section" id="filiaisSetoresSection" style="margin-top: 30px;">
+          <div class="section-header" style="display:flex; justify-content:space-between; align-items:center;">
+            <h3>Gestão de Filiais e Setores</h3>
+            <div>
+              <button class="btn-add-user" onclick="openFilialModal()" style="margin-right:10px;">+ Nova Filial</button>
+              <button class="btn-add-user" onclick="openSetorModal()" style="background:#555;">+ Novo Setor</button>
+            </div>
+          </div>
+          <div id="filiaisList" style="margin-top: 15px; display: flex; flex-direction: column; gap: 15px;">
+            <div style="color:var(--text-muted); font-size: 13px;">Carregando filiais...</div>
+          </div>
+        </section>
+
+        <!-- Botões de Ação -->
         <h1>Gestão de Acessos</h1>
         <p style="color:var(--text-secondary)">Gerencie logins e vincule às instâncias</p>
-        <div class="card" style="margin-top:20px; border: 1px dashed var(--border); background: rgba(0,0,0,0.1);">
+        <div class="card" id="n8nBotCard" style="margin-top:20px; border: 1px dashed var(--border); background: rgba(0,0,0,0.1);">
           <h3 style="color:var(--green); font-size:14px; margin-bottom:10px">🤖 Envio de Mensagem pelo Bot (N8N)</h3>
           <p style="font-size:13px; color:var(--text-secondary); line-height:1.5;">
-            Para que o N8N avise o Dashboard quando o Bot responder ao cliente, adicione um nó HTTP na sua automação apontando para:<br><br>
-            <strong style="color:white; background:var(--bg-panel); padding:4px 8px; border-radius:4px;">POST https://SEU-DOMINIO/api/bot-message</strong>
+            Para que o N8N avise o Dashboard quando o Bot responder ao cliente, adicione um nó HTTP na sua automação
+            apontando para:<br><br>
+            <strong style="color:white; background:var(--bg-panel); padding:4px 8px; border-radius:4px;">POST
+              https://SEU-DOMINIO/api/bot-message</strong>
             <br><br>
             Payload JSON (Body Parameters):<br>
-            <code style="display:block; background:#0b141a; padding:10px; border-radius:8px; margin-top:5px; color:#53bdeb;">
+            <code
+              style="display:block; background:#0b141a; padding:10px; border-radius:8px; margin-top:5px; color:#53bdeb;">
             {<br>
               &nbsp;&nbsp;"instance": "Nome da Instancia",<br>
               &nbsp;&nbsp;"phone": "5511999999999",<br>
@@ -107,11 +298,77 @@
           <input type="email" id="userEmail" required>
         </div>
         <div class="form-group">
+          <label>Número Pessoal (WhatsApp)</label>
+          <input type="text" id="userPhone" placeholder="Ex: 5511999999999">
+        </div>
+        <div class="form-group">
           <label>Senha</label>
           <input type="password" id="userPassword" placeholder="Deixe em branco para manter">
         </div>
+        <div class="form-group">
+          <label>Filial (Opcional)</label>
+          <select id="userFilial" onchange="filterSetores()"
+            style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary); outline: none;">
+            <option value="">Nenhuma</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Setor (Opcional)</label>
+          <select id="userSetor"
+            style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary); outline: none;">
+            <option value="">Nenhum</option>
+          </select>
+        </div>
         <div class="modal-actions">
           <button type="button" class="btn-cancel" onclick="closeModal()">Cancelar</button>
+          <button type="submit" class="btn-add-user">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Filial Modal -->
+  <div id="filialModal" class="modal">
+    <div class="modal-content">
+      <h2 style="margin-bottom: 20px">Cadastrar Filial</h2>
+      <form onsubmit="handleFilialSubmit(event)">
+        <div class="form-group">
+          <label>Nome da Filial</label>
+          <input type="text" id="filialName" required>
+        </div>
+        <div class="form-group">
+          <label>Instância Vinculada</label>
+          <select id="filialInstance" required
+            style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary); outline: none;">
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-cancel"
+            onclick="document.getElementById('filialModal').style.display='none'">Cancelar</button>
+          <button type="submit" class="btn-add-user">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Setor Modal -->
+  <div id="setorModal" class="modal">
+    <div class="modal-content">
+      <h2 style="margin-bottom: 20px">Cadastrar Setor</h2>
+      <form onsubmit="handleSetorSubmit(event)">
+        <div class="form-group">
+          <label>Nome do Setor</label>
+          <input type="text" id="setorName" required>
+        </div>
+        <div class="form-group">
+          <label>Filial</label>
+          <select id="setorFilial" required
+            style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary); outline: none;">
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-cancel"
+            onclick="document.getElementById('setorModal').style.display='none'">Cancelar</button>
           <button type="submit" class="btn-add-user">Salvar</button>
         </div>
       </form>
@@ -122,15 +379,33 @@
     const API_URL = window.location.origin;
     let allInstances = [];
     let currentUsers = [];
+    let allFiliais = [];
+    let allSetores = [];
+    let currentUserRole = 'user';
 
     // Carregar dados iniciais
     window.onload = async () => {
       const token = localStorage.getItem('wp_crm_token');
       if (!token) window.location.href = 'index.html';
-      
+
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        currentUserRole = payload.role;
+      } catch (e) { }
+
+      if (currentUserRole !== 'admin') {
+        document.getElementById('integracoesSection').style.display = 'none';
+        const n8nCard = document.getElementById('n8nBotCard');
+        if (n8nCard) n8nCard.style.display = 'none';
+      }
+
       await loadAllInstances();
-      await renderWebhooksList();
+      if (currentUserRole === 'admin') await renderWebhooksList();
+      await loadFiliais();
+      await loadSetores();
       await loadUsers();
+
+      updateSelects();
     };
 
     async function apiFetch(path, method = 'GET', body = null) {
@@ -164,7 +439,7 @@
     async function renderWebhooksList() {
       const container = document.getElementById('webhooksList');
       container.innerHTML = '';
-      
+
       const res = await apiFetch('/api/admin/settings');
       const settings = res || {};
 
@@ -220,7 +495,8 @@
 
     async function loadUsers() {
       try {
-        const response = await fetch(`${API_URL}/api/admin/users`, {
+        const endpoint = currentUserRole === 'gestor' ? '/api/gestor/users' : '/api/admin/users';
+        const response = await fetch(`${API_URL}${endpoint}`, {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}` }
         });
         currentUsers = await response.json();
@@ -228,6 +504,98 @@
       } catch (err) {
         console.error('Erro ao carregar usuários:', err);
       }
+    }
+
+    async function loadFiliais() {
+      try {
+        const response = await fetch(`${API_URL}/api/admin/filiais`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}` }
+        });
+        allFiliais = await response.json();
+        renderFiliais();
+      } catch (err) { }
+    }
+
+    async function loadSetores() {
+      try {
+        const response = await fetch(`${API_URL}/api/admin/setores`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}` }
+        });
+        allSetores = await response.json();
+        renderFiliais();
+      } catch (err) { }
+    }
+
+    function renderFiliais() {
+      const container = document.getElementById('filiaisList');
+      container.innerHTML = '';
+      if (allFiliais.length === 0) {
+        container.innerHTML = '<div style="color:var(--text-muted); font-size: 13px;">Nenhuma filial cadastrada.</div>';
+        return;
+      }
+      allFiliais.forEach(f => {
+        const div = document.createElement('div');
+        div.style.cssText = 'background:var(--bg-input); padding:15px; border-radius:10px; border:1px solid var(--border);';
+
+        let setoresHtml = allSetores.filter(s => s.filial_id === f.id).map(s =>
+          `<span style="display:inline-block; padding:4px 8px; background:var(--panel-bg); border-radius:4px; font-size:12px; margin-right:5px;">${s.name}</span>`
+        ).join('') || '<span style="font-size:12px; color:var(--text-muted)">Nenhum setor adicionado</span>';
+
+        div.innerHTML = `
+          <h4 style="margin-bottom:8px;">🏢 ${f.name} <span style="font-size:12px; font-weight:normal; color:var(--text-muted)">(${f.instance})</span></h4>
+          <div>${setoresHtml}</div>
+        `;
+        container.appendChild(div);
+      });
+      updateSelects();
+    }
+
+    function updateSelects() {
+      const instSel = document.getElementById('filialInstance');
+      instSel.innerHTML = allInstances.map(i => `<option value="${i.instanceName || i.name}">${i.instanceName || i.name}</option>`).join('');
+
+      const filSel = document.getElementById('setorFilial');
+      filSel.innerHTML = allFiliais.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+
+      const setSel = document.getElementById('userSetor');
+      setSel.innerHTML = '<option value="">Nenhum</option>' +
+        allSetores.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+        
+      const userFilSel = document.getElementById('userFilial');
+      userFilSel.innerHTML = '<option value="">Nenhuma</option>' + 
+        allFiliais.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+    }
+
+    function filterSetores() {
+      const filIdStr = document.getElementById('userFilial').value;
+      const setSel = document.getElementById('userSetor');
+      setSel.innerHTML = '<option value="">Nenhum</option>';
+      if (filIdStr) {
+        const filId = parseInt(filIdStr);
+        setSel.innerHTML += allSetores.filter(s => s.filial_id === filId).map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+      } else {
+        setSel.innerHTML += allSetores.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+      }
+    }
+
+    function openFilialModal() { document.getElementById('filialModal').style.display = 'flex'; }
+    function openSetorModal() {
+      if (allFiliais.length === 0) { alert('Crie uma filial primeiro.'); return; }
+      document.getElementById('setorModal').style.display = 'flex';
+    }
+
+    async function handleFilialSubmit(e) {
+      e.preventDefault();
+      const payload = { name: document.getElementById('filialName').value, instance: document.getElementById('filialInstance').value };
+      const res = await apiFetch('/api/admin/filiais', 'POST', payload);
+      if (res) { document.getElementById('filialModal').style.display = 'none'; await loadFiliais(); }
+    }
+
+    async function handleSetorSubmit(e) {
+      e.preventDefault();
+      const payload = { name: document.getElementById('setorName').value, filial_id: parseInt(document.getElementById('setorFilial').value) };
+      const res = await apiFetch('/api/admin/setores', 'POST', payload);
+      if (res) { document.getElementById('setorModal').style.display = 'none'; await loadSetores(); }
     }
 
     function renderUsers(users) {
@@ -252,14 +620,16 @@
             <div class="user-circle">${user.name.charAt(0)}</div>
             <div>
               <h3>${user.name}</h3>
-              <p style="color:var(--text-muted); font-size:13px">${user.email}</p>
+              <p style="color:var(--text-muted); font-size:13px">${user.email} ${user.phone ? `&bull; 📱 ${user.phone}` : ''}</p>
+              ${user.filial_id ? `<p style="color:var(--green); font-size:12px; margin-top:4px;">Filial ID: ${user.filial_id}</p>` : ''}
+              ${user.setor_id ? `<p style="color:var(--green); font-size:12px; margin-top:4px;">Setor ID: ${user.setor_id}</p>` : ''}
             </div>
           </div>
           <h4 style="font-size:13px; color:var(--text-primary); margin-bottom:12px; font-weight:600">🔌 Instâncias que este usuário pode acessar e responder:</h4>
           <div class="instances-grid">
             ${allInstances.map(inst => {
-              const instId = inst.instanceName || inst.name;
-              return `
+          const instId = inst.instanceName || inst.name;
+          return `
                 <div class="instance-link-item">
                   <label class="checkbox-wrap">
                     <input type="checkbox" onchange="toggleLink(${user.id}, '${instId}', this)" ${user.instances?.includes(instId) ? 'checked' : ''}>
@@ -267,7 +637,7 @@
                   </label>
                 </div>
               `;
-            }).join('')}
+        }).join('')}
           </div>
         `;
         container.appendChild(card);
@@ -278,7 +648,9 @@
       document.getElementById('modalTitle').textContent = 'Cadastrar Usuário';
       document.getElementById('userIdField').value = '';
       document.getElementById('userForm').reset();
+      document.getElementById('userPhone').value = '';
       document.getElementById('userPassword').required = true;
+      filterSetores();
       document.getElementById('userModal').style.display = 'flex';
     }
 
@@ -290,6 +662,10 @@
       document.getElementById('userIdField').value = user.id;
       document.getElementById('userName').value = user.name;
       document.getElementById('userEmail').value = user.email;
+      document.getElementById('userPhone').value = user.phone || '';
+      document.getElementById('userFilial').value = user.filial_id || '';
+      filterSetores();
+      document.getElementById('userSetor').value = user.setor_id || '';
       document.getElementById('userPassword').value = '';
       document.getElementById('userPassword').required = false;
       document.getElementById('userModal').style.display = 'flex';
@@ -304,19 +680,41 @@
       const id = document.getElementById('userIdField').value;
       const name = document.getElementById('userName').value;
       const email = document.getElementById('userEmail').value;
+      const phone = document.getElementById('userPhone').value;
       const password = document.getElementById('userPassword').value;
+      const setorIdStr = document.getElementById('userSetor').value;
+      const setor_id = setorIdStr ? parseInt(setorIdStr) : null;
+      const filialIdStr = document.getElementById('userFilial').value;
+      let filial_id = filialIdStr ? parseInt(filialIdStr) : null;
+      if (setor_id) {
+        const s = allSetores.find(x => x.id === setor_id);
+        if (s) filial_id = s.filial_id;
+      }
 
       const method = id ? 'PUT' : 'POST';
-      const endpoint = id ? `${API_URL}/api/admin/users/${id}` : `${API_URL}/api/admin/users`;
+      let endpoint = '';
+      if (currentUserRole === 'gestor') {
+        endpoint = id ? `${API_URL}/api/gestor/users/${id}` : `${API_URL}/api/gestor/users`;
+      } else {
+        endpoint = id ? `${API_URL}/api/admin/users/${id}` : `${API_URL}/api/admin/users`;
+      }
+
+      let payload = { name, email, phone, password, setor_id, filial_id };
+      if (currentUserRole === 'gestor' && !id) {
+        if (allInstances.length > 0) {
+          const inst = allInstances[0].instanceName || allInstances[0].name;
+          payload.instances = [inst];
+        }
+      }
 
       try {
         const response = await fetch(endpoint, {
           method,
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}`
           },
-          body: JSON.stringify({ name, email, password })
+          body: JSON.stringify(payload)
         });
 
         if (response.ok) {
@@ -334,8 +732,10 @@
     async function deleteUser(id) {
       if (!confirm('Tem certeza que deseja excluir este usuário?')) return;
 
+      const endpoint = currentUserRole === 'gestor' ? `/api/gestor/users/${id}` : `/api/admin/users/${id}`;
+
       try {
-        const response = await fetch(`${API_URL}/api/admin/users/${id}`, {
+        const response = await fetch(`${API_URL}${endpoint}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}` }
         });
@@ -351,12 +751,34 @@
     }
 
     async function toggleLink(userId, instanceName, checkbox) {
+      if (currentUserRole === 'gestor') {
+        const user = currentUsers.find(u => u.id === userId);
+        let insts = user.instances || [];
+        if (checkbox.checked) {
+          if (!insts.includes(instanceName)) insts.push(instanceName);
+        } else {
+          insts = insts.filter(i => i !== instanceName);
+        }
+        try {
+          const response = await fetch(`${API_URL}/api/gestor/users/${userId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}` },
+            body: JSON.stringify({ instances: insts })
+          });
+          if (!response.ok) {
+            checkbox.checked = !checkbox.checked;
+            alert('Erro ao atualizar vínculo');
+          }
+        } catch (err) { checkbox.checked = !checkbox.checked; alert('Erro de conexão'); }
+        return;
+      }
+
       const action = checkbox.checked ? 'add' : 'remove';
-      
+
       try {
         const response = await fetch(`${API_URL}/api/admin/link-user-instance`, {
           method: 'POST',
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}`
           },
@@ -374,4 +796,5 @@
     }
   </script>
 </body>
+
 </html>

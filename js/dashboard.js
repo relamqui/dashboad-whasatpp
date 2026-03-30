@@ -8,6 +8,7 @@ let currentChat = null;
 // CONTACTS está definido em data.js como let
 let currentTab = 'all';
 let currentInstance = 'all';
+let currentTagFilter = 'all';
 let sidebarOpen = true;
 let emojiVisible = false;
 
@@ -37,6 +38,7 @@ window.onload = async () => {
   
   await loadContacts();
   renderInstanceSelector(); // Novo: carregar chips dinâmicos
+  renderTagFilter();
   renderChatList(getFilteredContacts());
 };
 
@@ -44,8 +46,13 @@ function renderUserProfile(user) {
   document.getElementById('userAvatar').textContent = user.name.charAt(0).toUpperCase();
   document.getElementById('userAvatar').title = user.name + ' (' + user.email + ')';
 
-  if (user.role === 'admin') {
+  if (user.role === 'admin' || user.role === 'gestor') {
     document.getElementById('navAdmin').style.display = 'flex';
+  }
+  
+  if (user.role === 'user') {
+    const navInst = document.getElementById('navInstances');
+    if (navInst) navInst.style.display = 'none';
   }
 }
 
@@ -78,6 +85,21 @@ function initSocket(token) {
 
     socket.on('whatsapp_event', (data) => {
       handleIncomingWebhook(data);
+    });
+
+    socket.on('chat_assignment', (data) => {
+      handleChatAssignment(data);
+    });
+
+    socket.on('chat_tags_updated', (data) => {
+      const contact = CONTACTS.find(c => c.id === data.id);
+      if (contact) {
+        contact.tags = data.tags;
+        if (currentChat && currentChat.id === data.id) {
+            updateContactDetails(currentChat);
+        }
+        renderChatList(getFilteredContacts());
+      }
     });
   } else {
     console.warn('Socket.io no encontrado. Rodando em modo offline/mock.');
@@ -149,7 +171,8 @@ function handleIncomingWebhook(data) {
     const now = new Date();
     const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
 
-    let contact = CONTACTS.find(c => c.phone === phone);
+    const instName = data.instance || data._instance || 'unknown';
+    let contact = CONTACTS.find(c => c.phone === phone && c.instance === instName);
 
     let type = fromMe ? 'out' : 'in';
 
@@ -250,12 +273,33 @@ function renderChatList(contacts) {
       preview = '📎 Arquivo';
     }
 
+    // Tags para mostrar na listagem
+    let visibleTags = [];
+    if (c.tags && c.tags.length > 0) {
+        const atendenteTag = c.tags.find(t => t.startsWith('Atendente:'));
+        const botTag = c.tags.find(t => t === 'BOT');
+        
+        if (atendenteTag) {
+            visibleTags.push({ label: atendenteTag.replace('Atendente:', '').trim(), cls: 'tag-orange' });
+        } else if (botTag) {
+            visibleTags.push({ label: 'BOT', cls: 'tag-purple' });
+        } else {
+            const other = c.tags.find(t => t !== 'Novo Lead' && t !== 'Leads');
+            if (other) visibleTags.push({ label: other, cls: tagColor(other) });
+        }
+    }
+    
+    let tagsHtml = visibleTags.map(t => `<span class="chat-list-tag ${t.cls}">${escapeHtml(t.label)}</span>`).join('');
+
     item.innerHTML = `
       <div class="chat-item-avatar" style="background:${avatarColor(c.name)}">${c.avatar}</div>
       <div class="chat-item-body">
         <div class="chat-item-top">
           <span class="chat-item-name">${c.name}</span>
-          <span class="chat-item-time ${timeClass}">${c.time}</span>
+          <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+             ${tagsHtml}
+             <span class="chat-item-time ${timeClass}">${c.time}</span>
+          </div>
         </div>
         <span class="chat-item-preview">${preview}</span>
       </div>
@@ -325,6 +369,9 @@ async function openChat(id) {
 
   // Update sidebar details
   updateContactDetails(contact);
+
+  // Update attendance bar
+  updateAttendanceBar(contact);
 }
 
 function closeChatMobile() {
@@ -600,7 +647,15 @@ async function sendMessage() {
     });
 
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Falha ao enviar');
+    if (!response.ok) {
+      // If chat is locked by another attendant, remove optimistic message
+      if (response.status === 403) {
+        const idx = currentChat.messages.indexOf(newMsg);
+        if (idx > -1) currentChat.messages.splice(idx, 1);
+        renderMessages(currentChat.messages);
+      }
+      throw new Error(data.error || 'Falha ao enviar');
+    }
     
     // Update the temporary ID with the real ID from the backend to avoid duplicate from webhook
     const realId = data.key?.id || data.messageId || data.id;
@@ -849,6 +904,23 @@ function updateContactDetails(contact) {
   document.getElementById('detailsPhone').textContent = contact.phone;
   document.getElementById('detailsInstance').textContent = contact.instanceName;
 
+  // Update attendant info
+  const detailsAgent = document.getElementById('detailsAgent');
+  if (detailsAgent) {
+    const user = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
+    if (contact.assigned_name) {
+      detailsAgent.textContent = contact.assigned_to === user.id ? 'Você' : contact.assigned_name;
+    } else {
+      detailsAgent.textContent = 'Nenhum';
+    }
+  }
+
+  // Update contact status
+  const detailsStatus = document.getElementById('detailsContactStatus');
+  if (detailsStatus) {
+    detailsStatus.textContent = contact.assigned_to ? 'Em atendimento' : 'Aberto';
+  }
+
   const tagsArea = document.getElementById('tagsArea');
   tagsArea.innerHTML = '';
   contact.tags.forEach(tag => {
@@ -987,15 +1059,68 @@ function selectInstance(btn, instance) {
 
 function setTab(btn, tab) {
   currentTab = tab;
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  currentTagFilter = 'all';
+  const tagFilterSelect = document.getElementById('tagFilter');
+  if (tagFilterSelect) tagFilterSelect.value = 'all';
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    if (b.tagName !== 'SELECT') b.classList.remove('active');
+  });
   btn.classList.add('active');
   renderChatList(getFilteredContacts());
+}
+
+function filterByTag(tag) {
+  currentTagFilter = tag;
+  if (tag !== 'all') {
+    document.querySelectorAll('.tab-btn').forEach(b => {
+       if(b.tagName !== 'SELECT') b.classList.remove('active');
+    });
+  } else {
+    document.querySelectorAll('.tab-btn').forEach(b => {
+       if(b.tagName !== 'SELECT') b.classList.remove('active');
+    });
+    const tabs = document.querySelectorAll('.tab-btn');
+    if (tabs.length > 0) tabs[0].classList.add('active');
+    currentTab = 'all';
+  }
+  renderChatList(getFilteredContacts());
+}
+
+function renderTagFilter() {
+  const select = document.getElementById('tagFilter');
+  if (!select) return;
+  const oldVal = select.value;
+  
+  const allTags = new Set();
+  CONTACTS.forEach(c => {
+    if (c.tags) {
+      c.tags.forEach(t => allTags.add(t));
+    }
+  });
+  
+  select.innerHTML = '<option value="all">Filtro de Etiquetas</option>';
+  Array.from(allTags).sort().forEach(tag => {
+    const opt = document.createElement('option');
+    opt.value = tag;
+    opt.textContent = tag;
+    select.appendChild(opt);
+  });
+  
+  if (allTags.has(oldVal)) {
+    select.value = oldVal;
+  } else {
+    currentTagFilter = 'all';
+    select.value = 'all';
+  }
 }
 
 function getFilteredContacts() {
   return CONTACTS.filter(c => {
     if (currentInstance !== 'all' && c.instance !== currentInstance) return false;
     if (currentTab === 'unread' && c.unread === 0) return false;
+    if (currentTagFilter !== 'all') {
+      if (!c.tags || !c.tags.includes(currentTagFilter)) return false;
+    }
     return true;
   });
 }
@@ -1242,6 +1367,119 @@ async function sendDocumentMessage(file) {
   reader.readAsDataURL(file);
 }
 
+// ─── Atendimento (Assign / Release) ──────────────────────────────────────────
+function updateAttendanceBar(contact) {
+  const bar = document.getElementById('attendanceBar');
+  const info = document.getElementById('attendanceInfo');
+  const actions = document.getElementById('attendanceActions');
+  const inputBar = document.getElementById('inputBar');
+  const inputLocked = document.getElementById('inputLockedBar');
+  
+  if (!bar || !contact) return;
+  
+  const user = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
+  const isAssignedToMe = contact.assigned_to === user.id;
+  const isAssigned = !!contact.assigned_to;
+  const isAssignedToOther = isAssigned && !isAssignedToMe;
+  
+  bar.style.display = 'flex';
+  
+  if (!isAssigned) {
+    // Chat livre
+    info.innerHTML = `<span class="att-status-dot free"></span> <span>Chat sem atendente</span>`;
+    actions.innerHTML = `<button class="btn-atender" onclick="assignChat()">✋ Atender</button>`;
+    if (inputBar) inputBar.style.display = 'flex';
+    if (inputLocked) inputLocked.style.display = 'none';
+  } else if (isAssignedToMe) {
+    // Eu estou atendendo
+    info.innerHTML = `<span class="att-status-dot active"></span> <span>Você está atendendo este chat</span>`;
+    actions.innerHTML = `<button class="btn-finalizar" onclick="releaseChat()">✖ Finalizar</button>`;
+    if (inputBar) inputBar.style.display = 'flex';
+    if (inputLocked) inputLocked.style.display = 'none';
+  } else {
+    // Outro atendente está atendendo
+    info.innerHTML = `<span class="att-status-dot active"></span> <span>Atendido por <span class="att-label">${contact.assigned_name}</span></span>`;
+    actions.innerHTML = '';
+    if (inputBar) inputBar.style.display = 'none';
+    if (inputLocked) {
+      inputLocked.style.display = 'flex';
+      document.getElementById('inputLockedText').textContent = `Chat sendo atendido por ${contact.assigned_name}`;
+    }
+  }
+}
+
+async function assignChat() {
+  if (!currentChat) return;
+  const token = localStorage.getItem('wp_crm_token');
+  try {
+    const res = await fetch(`${API_URL}/api/contacts/${currentChat.id}/assign`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (res.ok) {
+      currentChat.assigned_to = data.assigned_to;
+      currentChat.assigned_name = data.assigned_name;
+      if (data.tags) currentChat.tags = data.tags;
+      updateAttendanceBar(currentChat);
+      updateContactDetails(currentChat);
+      renderChatList(getFilteredContacts());
+      showToast('Você assumiu o atendimento!');
+    } else {
+      showToast(data.error || 'Erro ao atender');
+    }
+  } catch (err) {
+    console.error('Erro ao atender:', err);
+    showToast('Erro de conexão ao atender.');
+  }
+}
+
+async function releaseChat() {
+  if (!currentChat) return;
+  const token = localStorage.getItem('wp_crm_token');
+  try {
+    const res = await fetch(`${API_URL}/api/contacts/${currentChat.id}/release`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (res.ok) {
+      currentChat.assigned_to = null;
+      currentChat.assigned_name = null;
+      if (data.tags) currentChat.tags = data.tags;
+      updateAttendanceBar(currentChat);
+      updateContactDetails(currentChat);
+      renderChatList(getFilteredContacts());
+      showToast('Atendimento finalizado!');
+    } else {
+      showToast(data.error || 'Erro ao finalizar');
+    }
+  } catch (err) {
+    console.error('Erro ao finalizar:', err);
+    showToast('Erro de conexão ao finalizar.');
+  }
+}
+
+function handleChatAssignment(data) {
+  // Update local contact data when another user assigns/releases
+  const contact = CONTACTS.find(c => c.id === data.contact_id);
+  if (contact) {
+    contact.assigned_to = data.assigned_to;
+    contact.assigned_name = data.assigned_name;
+    if (data.tags) contact.tags = data.tags;
+    
+    // If this is the currently open chat, update the UI
+    if (currentChat && currentChat.id === data.contact_id) {
+      currentChat.assigned_to = data.assigned_to;
+      currentChat.assigned_name = data.assigned_name;
+      if (data.tags) currentChat.tags = data.tags;
+      updateAttendanceBar(currentChat);
+      updateContactDetails(currentChat);
+    }
+    renderChatList(getFilteredContacts());
+  }
+}
+
 // ─── Misc ─────────────────────────────────────────────────────────────────────
 function addTag() {
   const tag = prompt('Nome da etiqueta:');
@@ -1418,6 +1656,8 @@ function avatarColor(name) {
 }
 
 function tagColor(tag) {
+  if (tag === 'BOT') return 'tag-purple';
+  if (tag.startsWith('Atendente:')) return 'tag-orange';
   const map = { 'Novo Lead': 'tag-green', 'VIP': 'tag-blue', 'Cliente': 'tag-blue', 'Vendas': 'tag-green', 'Suporte': 'tag-blue', 'Leads': 'tag-green' };
   return map[tag] || 'tag-green';
 }
