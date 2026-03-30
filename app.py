@@ -379,11 +379,20 @@ def list_users():
 @admin_required
 def create_user():
     data = request.json
-    if not data.get('filial_id') or not data.get('setor_id'):
+    f_id = data.get('filial_id')
+    s_id = data.get('setor_id')
+    if not f_id or not s_id:
         return jsonify({'error': 'Filial e Setor são obrigatórios'}), 400
 
     if User.query.filter_by(email=data['email']).first():
         return jsonify({'error': 'E-mail já cadastrado'}), 400
+        
+    filial_name = None
+    setor_name = None
+    f_obj = Filial.query.get(f_id)
+    if f_obj: filial_name = f_obj.name
+    s_obj = Setor.query.get(s_id)
+    if s_obj: setor_name = s_obj.name
     
     new_user = User(
         name=data.get('name'),
@@ -392,10 +401,10 @@ def create_user():
         password=data.get('password'),
         role='user',
         instances=[],
-        filial_id=data.get('filial_id'),
-        setor_id=data.get('setor_id'),
-        filial=data.get('filial'),
-        setor=data.get('setor')
+        filial_id=f_id,
+        setor_id=s_id,
+        filial=data.get('filial') or filial_name,
+        setor=data.get('setor') or setor_name
     )
     db_sql.session.add(new_user)
     db_sql.session.commit()
@@ -426,14 +435,23 @@ def manage_user(user_id):
             user.phone = data.get('phone')
         if data.get('password'):
             user.password = data['password']
-        if 'filial_id' in data:
-            user.filial_id = data.get('filial_id')
-        if 'setor_id' in data:
-            user.setor_id = data.get('setor_id')
-        if 'filial' in data:
+            
+        f_id = data.get('filial_id')
+        s_id = data.get('setor_id')
+        if f_id:
+            user.filial_id = f_id
+            f_obj = Filial.query.get(f_id)
+            if f_obj: user.filial = f_obj.name
+        if s_id:
+            user.setor_id = s_id
+            s_obj = Setor.query.get(s_id)
+            if s_obj: user.setor = s_obj.name
+            
+        if data.get('filial'):
             user.filial = data.get('filial')
-        if 'setor' in data:
+        if data.get('setor'):
             user.setor = data.get('setor')
+            
         db_sql.session.commit()
         return jsonify({
             'id': user.id,
@@ -553,7 +571,9 @@ def gestor_manage_users():
 
     if request.method == 'POST':
         data = request.json
-        if not data.get('filial_id') or not data.get('setor_id'):
+        f_id = data.get('filial_id')
+        s_id = data.get('setor_id')
+        if not f_id or not s_id:
             return jsonify({'error': 'Filial e Setor são obrigatórios'}), 400
 
         email = data.get('email')
@@ -566,6 +586,13 @@ def gestor_manage_users():
         if User.query.filter_by(email=email).first():
             return jsonify({'error': 'E-mail já cadastrado'}), 400
 
+        filial_name = None
+        setor_name = None
+        f_obj = Filial.query.get(f_id)
+        if f_obj: filial_name = f_obj.name
+        s_obj = Setor.query.get(s_id)
+        if s_obj: setor_name = s_obj.name
+
         novo_usr = User(
             name=data.get('name'),
             email=email,
@@ -573,10 +600,10 @@ def gestor_manage_users():
             password=data.get('password', '123456'),
             role='user',
             instances=list(instances_to_assign),
-            filial_id=data.get('filial_id'),
-            setor_id=data.get('setor_id'),
-            filial=data.get('filial'),
-            setor=data.get('setor')
+            filial_id=f_id,
+            setor_id=s_id,
+            filial=data.get('filial') or filial_name,
+            setor=data.get('setor') or setor_name
         )
         db_sql.session.add(novo_usr)
         db_sql.session.commit()
@@ -632,13 +659,21 @@ def gestor_update_user(user_id):
             target_user.password = data['password']
         if 'instances' in data and (allowed_instances is None or set(data['instances']).issubset(allowed_instances)):
             target_user.instances = list(data['instances'])
-        if 'filial_id' in data:
-            target_user.filial_id = data.get('filial_id')
-        if 'setor_id' in data:
-            target_user.setor_id = data.get('setor_id')
-        if 'filial' in data:
+            
+        f_id = data.get('filial_id')
+        s_id = data.get('setor_id')
+        if f_id:
+            target_user.filial_id = f_id
+            f_obj = Filial.query.get(f_id)
+            if f_obj: target_user.filial = f_obj.name
+        if s_id:
+            target_user.setor_id = s_id
+            s_obj = Setor.query.get(s_id)
+            if s_obj: target_user.setor = s_obj.name
+            
+        if data.get('filial'):
             target_user.filial = data.get('filial')
-        if 'setor' in data:
+        if data.get('setor'):
             target_user.setor = data.get('setor')
             
         db_sql.session.commit()
