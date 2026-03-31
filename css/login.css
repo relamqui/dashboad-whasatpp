@@ -89,7 +89,7 @@ body {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 20px;
-  padding: 40px 36px;
+  padding: 36px 36px 40px;
   backdrop-filter: blur(20px);
   box-shadow: 0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04) inset;
   animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -103,21 +103,23 @@ body {
 /* ---- Logo ---- */
 .logo-area {
   text-align: center;
-  margin-bottom: 36px;
+  margin-bottom: 20px;
+  overflow: hidden;
 }
 
 .logo-image {
   max-width: 310px;
   width: 100%;
   height: auto;
-  margin-bottom: 12px;
+  /* Neutralize the transparent whitespace inside the PNG */
+  margin-top: -18%;
+  margin-bottom: calc(-18% + 50px);
   filter: drop-shadow(0 4px 16px rgba(245, 133, 31, 0.25));
 }
 
 .logo-subtitle {
   font-size: 13px;
   color: var(--text-secondary);
-  margin-top: 4px;
 }
 
 /* ---- Form ---- */
