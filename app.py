@@ -420,7 +420,7 @@ def create_user():
         email=data.get('email'),
         phone=data.get('phone'),
         password=data.get('password'),
-        role='user',
+        role=data.get('role', 'user') if data.get('role') in ('user', 'gestor') else 'user',
         instances=[],
         filial_id=f_id,
         setor_id=s_id,
@@ -472,6 +472,11 @@ def manage_user(user_id):
             user.filial = data.get('filial')
         if data.get('setor'):
             user.setor = data.get('setor')
+        
+        # Permite atualizar role (apenas user ou gestor, nunca admin)
+        new_role = data.get('role')
+        if new_role in ('user', 'gestor'):
+            user.role = new_role
             
         db_sql.session.commit()
         return jsonify({

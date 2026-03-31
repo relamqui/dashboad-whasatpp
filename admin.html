@@ -319,6 +319,15 @@
             <option value="">Selecione um setor</option>
           </select>
         </div>
+        <!-- Campo de Role — visível apenas para Admin -->
+        <div class="form-group" id="roleFieldGroup" style="display:none">
+          <label>Tipo de Usuário</label>
+          <select id="userRole"
+            style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary); outline: none;">
+            <option value="user">Usuário Comum</option>
+            <option value="gestor">Gestor</option>
+          </select>
+        </div>
         <div class="modal-actions">
           <button type="button" class="btn-cancel" onclick="closeModal()">Cancelar</button>
           <button type="submit" class="btn-add-user">Salvar</button>
@@ -650,6 +659,9 @@
       document.getElementById('userForm').reset();
       document.getElementById('userPhone').value = '';
       document.getElementById('userPassword').required = true;
+      document.getElementById('userRole').value = 'user';
+      // Mostrar campo de role apenas para Admin
+      document.getElementById('roleFieldGroup').style.display = currentUserRole === 'admin' ? 'flex' : 'none';
       filterSetores();
       document.getElementById('userModal').style.display = 'flex';
     }
@@ -668,6 +680,9 @@
       document.getElementById('userSetor').value = user.setor_id || '';
       document.getElementById('userPassword').value = '';
       document.getElementById('userPassword').required = false;
+      document.getElementById('userRole').value = user.role === 'gestor' ? 'gestor' : 'user';
+      // Mostrar campo de role apenas para Admin
+      document.getElementById('roleFieldGroup').style.display = currentUserRole === 'admin' ? 'flex' : 'none';
       document.getElementById('userModal').style.display = 'flex';
     }
 
@@ -712,6 +727,10 @@
       }
 
       let payload = { name, email, phone, password, setor_id, filial_id, filial: filial_name, setor: setor_name };
+      // Inclui role no payload apenas se o usuário logado for admin
+      if (currentUserRole === 'admin') {
+        payload.role = document.getElementById('userRole').value;
+      }
       if (currentUserRole === 'gestor' && !id) {
         if (allInstances.length > 0) {
           const inst = allInstances[0].instanceName || allInstances[0].name;
