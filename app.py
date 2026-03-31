@@ -571,14 +571,24 @@ def manage_filial_single(filial_id):
         instance = data.get('instance', filial.instance)
         if user.role == 'gestor' and instance not in (user.instances or []):
             return jsonify({'error': 'Sem permissão para esta instância.'}), 403
+            
+        if name != filial.name:
+            User.query.filter_by(filial_id=filial_id).update({'filial': name})
+            
         filial.name = name
         filial.instance = instance
         db_sql.session.commit()
         return jsonify({'id': filial.id, 'name': filial.name, 'instance': filial.instance})
 
     if request.method == 'DELETE':
-        # Remover setores vinculados
-        Setor.query.filter_by(filial_id=filial_id).delete()
+        # Remover referências nos usuários
+        User.query.filter_by(filial_id=filial_id).update({'filial_id': None, 'filial': None})
+        # Remover setores vinculados e suas referências nos usuários
+        setores = Setor.query.filter_by(filial_id=filial_id).all()
+        for s in setores:
+            User.query.filter_by(setor_id=s.id).update({'setor_id': None, 'setor': None})
+            db_sql.session.delete(s)
+            
         db_sql.session.delete(filial)
         db_sql.session.commit()
         return jsonify({'success': True})
@@ -635,17 +645,25 @@ def manage_setor_single(setor_id):
 
     if request.method == 'PUT':
         data = request.json
-        setor.name = data.get('name', setor.name)
+        new_name = data.get('name', setor.name)
         new_filial_id = data.get('filial_id', setor.filial_id)
+        
         if new_filial_id:
             new_filial = Filial.query.get(new_filial_id)
             if user.role == 'gestor' and new_filial and new_filial.instance not in (user.instances or []):
                 return jsonify({'error': 'Sem permissão para esta filial.'}), 403
             setor.filial_id = new_filial_id
+            
+        if new_name != setor.name:
+            User.query.filter_by(setor_id=setor_id).update({'setor': new_name})
+            setor.name = new_name
+            
         db_sql.session.commit()
         return jsonify({'id': setor.id, 'name': setor.name, 'filial_id': setor.filial_id})
 
     if request.method == 'DELETE':
+        # Remover referências nos usuários
+        User.query.filter_by(setor_id=setor_id).update({'setor_id': None, 'setor': None})
         db_sql.session.delete(setor)
         db_sql.session.commit()
         return jsonify({'success': True})
