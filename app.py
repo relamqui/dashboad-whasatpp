@@ -241,9 +241,10 @@ def auth_required(f):
             token = token.split(" ")[1]
             data = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
             request.user = data
-            return f(*args, **kwargs)
-        except Exception:
-            return jsonify({'error': 'Token inválido ou expirado'}), 401
+        except Exception as e:
+            return jsonify({'error': 'Token inválido ou expirado', 'details': str(e)}), 401
+        
+        return f(*args, **kwargs)
     return decorated
 
 def admin_required(f):
