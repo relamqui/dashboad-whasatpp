@@ -552,6 +552,37 @@ def manage_filiais():
         
     return jsonify([{'id': f.id, 'name': f.name, 'instance': f.instance} for f in filiais])
 
+@app.route('/api/admin/filiais/<int:filial_id>', methods=['PUT', 'DELETE'])
+@auth_required
+@admin_or_gestor_required
+def manage_filial_single(filial_id):
+    filial = Filial.query.get(filial_id)
+    if not filial:
+        return jsonify({'error': 'Filial não encontrada'}), 404
+
+    user = User.query.get(request.user['id'])
+    # Gestor só pode gerenciar filiais das suas instâncias
+    if user.role == 'gestor' and filial.instance not in (user.instances or []):
+        return jsonify({'error': 'Sem permissão para esta filial.'}), 403
+
+    if request.method == 'PUT':
+        data = request.json
+        name = data.get('name', filial.name)
+        instance = data.get('instance', filial.instance)
+        if user.role == 'gestor' and instance not in (user.instances or []):
+            return jsonify({'error': 'Sem permissão para esta instância.'}), 403
+        filial.name = name
+        filial.instance = instance
+        db_sql.session.commit()
+        return jsonify({'id': filial.id, 'name': filial.name, 'instance': filial.instance})
+
+    if request.method == 'DELETE':
+        # Remover setores vinculados
+        Setor.query.filter_by(filial_id=filial_id).delete()
+        db_sql.session.delete(filial)
+        db_sql.session.commit()
+        return jsonify({'success': True})
+
 @app.route('/api/admin/setores', methods=['GET', 'POST'])
 @auth_required
 @admin_or_gestor_required
@@ -587,6 +618,37 @@ def manage_setores():
         setores = Setor.query.all()
 
     return jsonify([{'id': s.id, 'name': s.name, 'filial_id': s.filial_id} for s in setores])
+
+@app.route('/api/admin/setores/<int:setor_id>', methods=['PUT', 'DELETE'])
+@auth_required
+@admin_or_gestor_required
+def manage_setor_single(setor_id):
+    setor = Setor.query.get(setor_id)
+    if not setor:
+        return jsonify({'error': 'Setor não encontrado'}), 404
+
+    user = User.query.get(request.user['id'])
+    filial = Filial.query.get(setor.filial_id)
+    # Gestor só pode gerenciar setores das suas instâncias
+    if user.role == 'gestor' and filial and filial.instance not in (user.instances or []):
+        return jsonify({'error': 'Sem permissão para este setor.'}), 403
+
+    if request.method == 'PUT':
+        data = request.json
+        setor.name = data.get('name', setor.name)
+        new_filial_id = data.get('filial_id', setor.filial_id)
+        if new_filial_id:
+            new_filial = Filial.query.get(new_filial_id)
+            if user.role == 'gestor' and new_filial and new_filial.instance not in (user.instances or []):
+                return jsonify({'error': 'Sem permissão para esta filial.'}), 403
+            setor.filial_id = new_filial_id
+        db_sql.session.commit()
+        return jsonify({'id': setor.id, 'name': setor.name, 'filial_id': setor.filial_id})
+
+    if request.method == 'DELETE':
+        db_sql.session.delete(setor)
+        db_sql.session.commit()
+        return jsonify({'success': True})
 
 @app.route('/api/gestor/users', methods=['GET', 'POST'])
 @auth_required

@@ -339,8 +339,9 @@
   <!-- Filial Modal -->
   <div id="filialModal" class="modal">
     <div class="modal-content">
-      <h2 style="margin-bottom: 20px">Cadastrar Filial</h2>
+      <h2 style="margin-bottom: 20px" id="filialModalTitle">Cadastrar Filial</h2>
       <form onsubmit="handleFilialSubmit(event)">
+        <input type="hidden" id="filialIdField">
         <div class="form-group">
           <label>Nome da Filial</label>
           <input type="text" id="filialName" required>
@@ -363,8 +364,9 @@
   <!-- Setor Modal -->
   <div id="setorModal" class="modal">
     <div class="modal-content">
-      <h2 style="margin-bottom: 20px">Cadastrar Setor</h2>
+      <h2 style="margin-bottom: 20px" id="setorModalTitle">Cadastrar Setor</h2>
       <form onsubmit="handleSetorSubmit(event)">
+        <input type="hidden" id="setorIdField">
         <div class="form-group">
           <label>Nome do Setor</label>
           <input type="text" id="setorName" required>
@@ -546,12 +548,27 @@
         const div = document.createElement('div');
         div.style.cssText = 'background:var(--bg-input); padding:15px; border-radius:10px; border:1px solid var(--border);';
 
-        let setoresHtml = allSetores.filter(s => s.filial_id === f.id).map(s =>
-          `<span style="display:inline-block; padding:4px 8px; background:var(--panel-bg); border-radius:4px; font-size:12px; margin-right:5px;">${s.name}</span>`
+        const setoresDaFilial = allSetores.filter(s => s.filial_id === f.id);
+        let setoresHtml = setoresDaFilial.map(s =>
+          `<span style="display:inline-inline-flex; align-items:center; gap:4px; padding:4px 8px; background:var(--panel-bg); border-radius:4px; font-size:12px; margin-right:5px; margin-bottom:4px;">
+            ${s.name}
+            <button onclick="openEditSetorModal(${s.id})" title="Editar Setor" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:0 2px;font-size:11px;">&#9998;</button>
+            <button onclick="deleteSetor(${s.id})" title="Excluir Setor" style="background:none;border:none;cursor:pointer;color:#e74c3c;padding:0 2px;font-size:11px;">&#10005;</button>
+          </span>`
         ).join('') || '<span style="font-size:12px; color:var(--text-muted)">Nenhum setor adicionado</span>';
 
         div.innerHTML = `
-          <h4 style="margin-bottom:8px;">🏢 ${f.name} <span style="font-size:12px; font-weight:normal; color:var(--text-muted)">(${f.instance})</span></h4>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <h4 style="margin:0;">&#127970; ${f.name} <span style="font-size:12px; font-weight:normal; color:var(--text-muted);">(${f.instance})</span></h4>
+            <div style="display:flex; gap:6px;">
+              <button onclick="openEditFilialModal(${f.id})" class="action-btn btn-edit" title="Editar Filial" style="padding:5px 8px; font-size:12px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+              </button>
+              <button onclick="deleteFilial(${f.id})" class="action-btn btn-delete" title="Excluir Filial" style="padding:5px 8px; font-size:12px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
+            </div>
+          </div>
           <div>${setoresHtml}</div>
         `;
         container.appendChild(div);
@@ -587,23 +604,74 @@
       }
     }
 
-    function openFilialModal() { document.getElementById('filialModal').style.display = 'flex'; }
+    function openFilialModal() {
+      document.getElementById('filialModalTitle').textContent = 'Cadastrar Filial';
+      document.getElementById('filialIdField').value = '';
+      document.getElementById('filialName').value = '';
+      updateSelects();
+      document.getElementById('filialModal').style.display = 'flex';
+    }
+
+    function openEditFilialModal(id) {
+      const f = allFiliais.find(x => x.id === id);
+      if (!f) return;
+      document.getElementById('filialModalTitle').textContent = 'Editar Filial';
+      document.getElementById('filialIdField').value = f.id;
+      document.getElementById('filialName').value = f.name;
+      updateSelects();
+      setTimeout(() => { document.getElementById('filialInstance').value = f.instance; }, 50);
+      document.getElementById('filialModal').style.display = 'flex';
+    }
+
+    async function deleteFilial(id) {
+      if (!confirm('Excluir esta filial? Os setores vinculados também serão removidos.')) return;
+      const res = await apiFetch(`/api/admin/filiais/${id}`, 'DELETE');
+      if (res !== null) { await loadFiliais(); await loadSetores(); }
+    }
+
     function openSetorModal() {
       if (allFiliais.length === 0) { alert('Crie uma filial primeiro.'); return; }
+      document.getElementById('setorModalTitle').textContent = 'Cadastrar Setor';
+      document.getElementById('setorIdField').value = '';
+      document.getElementById('setorName').value = '';
+      updateSelects();
       document.getElementById('setorModal').style.display = 'flex';
+    }
+
+    function openEditSetorModal(id) {
+      const s = allSetores.find(x => x.id === id);
+      if (!s) return;
+      document.getElementById('setorModalTitle').textContent = 'Editar Setor';
+      document.getElementById('setorIdField').value = s.id;
+      document.getElementById('setorName').value = s.name;
+      updateSelects();
+      setTimeout(() => { document.getElementById('setorFilial').value = s.filial_id; }, 50);
+      document.getElementById('setorModal').style.display = 'flex';
+    }
+
+    async function deleteSetor(id) {
+      if (!confirm('Excluir este setor?')) return;
+      const res = await apiFetch(`/api/admin/setores/${id}`, 'DELETE');
+      if (res !== null) { await loadSetores(); }
     }
 
     async function handleFilialSubmit(e) {
       e.preventDefault();
+      const id = document.getElementById('filialIdField').value;
       const payload = { name: document.getElementById('filialName').value, instance: document.getElementById('filialInstance').value };
-      const res = await apiFetch('/api/admin/filiais', 'POST', payload);
+      const method = id ? 'PUT' : 'POST';
+      const endpoint = id ? `/api/admin/filiais/${id}` : '/api/admin/filiais';
+      const res = await apiFetch(endpoint, method, payload);
       if (res) { document.getElementById('filialModal').style.display = 'none'; await loadFiliais(); }
     }
 
     async function handleSetorSubmit(e) {
       e.preventDefault();
+      const id = document.getElementById('setorIdField').value;
       const payload = { name: document.getElementById('setorName').value, filial_id: parseInt(document.getElementById('setorFilial').value) };
-      const res = await apiFetch('/api/admin/setores', 'POST', payload);
+      const method = id ? 'PUT' : 'POST';
+      const endpoint = id ? `/api/admin/setores/${id}` : '/api/admin/setores';
+      const res = await apiFetch(endpoint, method, payload);
       if (res) { document.getElementById('setorModal').style.display = 'none'; await loadSetores(); }
     }
 
