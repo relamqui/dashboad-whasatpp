@@ -1607,10 +1607,28 @@ def release_chat(id):
     contact.assigned_to = None
     contact.assigned_name = None
     
+    _filial_r = None
+    _setor_r = None
+    if user:
+        if user.filial_id:
+            _f = Filial.query.get(user.filial_id)
+            _filial_r = _f.name if _f else None
+        if user.setor_id:
+            _s = Setor.query.get(user.setor_id)
+            _setor_r = _s.name if _s else None
+            
     tags = list(contact.tags or [])
     atendente_tag = f"Atendente: {old_name}"
     if atendente_tag in tags:
         tags.remove(atendente_tag)
+        
+    if 'BOT' not in tags:
+        tags.append('BOT')
+    
+    filial_tag = f"filial:{_filial_r}" if _filial_r else "filial:sede"
+    if filial_tag not in tags:
+        tags.append(filial_tag)
+
     contact.tags = tags
     flag_modified(contact, 'tags')
     
@@ -1619,16 +1637,6 @@ def release_chat(id):
     # Corpal Webhook — evento finalizar
     try:
         now = get_now()
-        _old_user = User.query.get(request.user['id'])
-        _filial_r = None
-        _setor_r = None
-        if _old_user:
-            if _old_user.filial_id:
-                _f = Filial.query.get(_old_user.filial_id)
-                _filial_r = _f.name if _f else None
-            if _old_user.setor_id:
-                _s = Setor.query.get(_old_user.setor_id)
-                _setor_r = _s.name if _s else None
         corpal_payload = {
             "evento": "finalizar",
             "atendimento_id": str(uuid.uuid4()),
@@ -1643,6 +1651,18 @@ def release_chat(id):
             "timestamp": now.isoformat()
         }
         requests.post(CORPAL_WEBHOOK_URL, json=corpal_payload, timeout=5)
+        
+        # Novo Webhook específico para finalizar atendimento
+        try:
+            n8n_final_payload = {
+                "numero_lead": contact.phone,
+                "nome_atendente": old_name,
+                "setor": _setor_r,
+                "filial": _filial_r
+            }
+            requests.post("https://n8n-n8n.ioms5g.easypanel.host/webhook/corpal-final-atendimento", json=n8n_final_payload, timeout=5)
+        except Exception as e_n8n:
+            print(f"Erro no webhook n8n-final-atendimento: {e_n8n}")
     except Exception as e:
         print(f"Erro webhook corpal (release): {e}")
     

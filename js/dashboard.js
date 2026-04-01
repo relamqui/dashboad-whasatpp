@@ -301,14 +301,23 @@ function renderChatList(contacts) {
     if (c.tags && c.tags.length > 0) {
         const atendenteTag = c.tags.find(t => t.startsWith('Atendente:'));
         const botTag = c.tags.find(t => t === 'BOT');
+        const filialTag = c.tags.find(t => typeof t === 'string' && t.toLowerCase().startsWith('filial:'));
         
         if (atendenteTag) {
             visibleTags.push({ label: atendenteTag.replace('Atendente:', '').trim(), cls: 'tag-orange' });
         } else if (botTag) {
             visibleTags.push({ label: 'BOT', cls: 'tag-purple' });
-        } else {
+        }
+        
+        if (filialTag) {
+            visibleTags.push({ label: filialTag, cls: typeof tagColor === 'function' ? tagColor(filialTag) : 'tag-blue' });
+        }
+        
+        if (!atendenteTag && !botTag && !filialTag) {
             const other = c.tags.find(t => t !== 'Novo Lead' && t !== 'Leads');
-            if (other) visibleTags.push({ label: other, cls: tagColor(other) });
+            if (other && typeof tagColor === 'function') {
+                visibleTags.push({ label: other, cls: tagColor(other) });
+            }
         }
     }
     
