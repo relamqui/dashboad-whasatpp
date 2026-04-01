@@ -1701,6 +1701,13 @@ def api_deduplicate():
 @admin_required
 def api_migrate_filial_names():
     try:
+        # Criar a coluna no banco se não existir
+        try:
+            db_sql.session.execute(db_sql.text("ALTER TABLE setor ADD COLUMN filial_name VARCHAR(100)"))
+            db_sql.session.commit()
+        except Exception:
+            db_sql.session.rollback()  # Coluna já existe, segue normal
+
         setores = Setor.query.all()
         count = 0
         for s in setores:
