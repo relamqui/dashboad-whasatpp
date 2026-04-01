@@ -1696,6 +1696,23 @@ def api_deduplicate():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/admin/migrate-filial-names', methods=['POST'])
+@auth_required
+@admin_required
+def api_migrate_filial_names():
+    try:
+        setores = Setor.query.all()
+        count = 0
+        for s in setores:
+            filial = Filial.query.get(s.filial_id)
+            if filial:
+                s.filial_name = filial.name
+                count += 1
+        db_sql.session.commit()
+        return jsonify({'updated': count})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/media/<media_type>')
 def stream_media(media_type):
     """Proxy de midia: busca o base64 da Evolution e retorna como stream.

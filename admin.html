@@ -262,6 +262,11 @@
             <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
               Este script varre o banco de dados fundindo números fantasma ou mal formatados ao contato correto.
             </p>
+            <hr style="border-color: var(--border); margin: 16px 0;">
+            <button class="btn-save-notes" style="background:#f39c12; padding:8px 16px; border:none; border-radius:6px; color:white; font-weight:600; cursor:pointer;" onclick="execMigrateFilialNames()">🔄 Atualizar Nomes de Filiais nos Setores</button>
+            <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
+              Preenche o campo "filial_name" em todos os setores existentes para o bot identificar corretamente.
+            </p>
           </div>
         </section>
 
@@ -519,6 +524,22 @@
       if (res && res.merge_count !== undefined) {
          alert(`Limpeza concluída!\n\n${res.merge_count} contatos aglutinados.\n${res.deleted_count} cadastros desnecessários removidos.`);
          await loadAllInstances(); // Refresh to update possible states
+      }
+
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }
+
+    async function execMigrateFilialNames() {
+      if(!confirm('Atualizar o nome da filial em todos os setores do banco?')) return;
+      const btn = document.querySelector('button[onclick="execMigrateFilialNames()"]');
+      const originalText = btn.textContent;
+      btn.textContent = 'Processando...';
+      btn.disabled = true;
+
+      const res = await apiFetch('/api/admin/migrate-filial-names', 'POST');
+      if (res && res.updated !== undefined) {
+        alert(`Migração concluída!\n\n${res.updated} setores atualizados com o nome da filial.`);
       }
 
       btn.textContent = originalText;
