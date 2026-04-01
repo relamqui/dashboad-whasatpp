@@ -301,7 +301,7 @@ function renderChatList(contacts) {
     if (c.tags && c.tags.length > 0) {
         const atendenteTag = c.tags.find(t => t.startsWith('Atendente:'));
         const botTag = c.tags.find(t => t === 'BOT');
-        const filialTag = c.tags.find(t => typeof t === 'string' && t.toLowerCase().startsWith('filial:'));
+        const filialTag = c.tags.find(t => typeof t === 'string' && t.includes(':') && !t.toLowerCase().startsWith('atendente:'));
         
         if (atendenteTag) {
             visibleTags.push({ label: atendenteTag.replace('Atendente:', '').trim(), cls: 'tag-orange' });

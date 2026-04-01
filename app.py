@@ -1564,6 +1564,19 @@ def assign_chat(id):
             "timestamp": now.isoformat()
         }
         requests.post(CORPAL_WEBHOOK_URL, json=corpal_payload, timeout=5)
+
+        # Novo Webhook específico para início de atendimento
+        try:
+            n8n_inicio_payload = {
+                "numero_lead": contact.phone,
+                "nome_atendente": user.name,
+                "setor": _setor_a,
+                "filial": _filial_a
+            }
+            requests.post("https://n8n-n8n.ioms5g.easypanel.host/webhook-test/corpal-inicio-atendimento", json=n8n_inicio_payload, timeout=5)
+        except Exception as e_n8n:
+            print(f"Erro no webhook n8n-inicio-atendimento: {e_n8n}")
+            
     except Exception as e:
         print(f"Erro webhook corpal (assign): {e}")
     
@@ -1625,7 +1638,17 @@ def release_chat(id):
     if 'BOT' not in tags:
         tags.append('BOT')
     
-    filial_tag = f"filial:{_filial_r}" if _filial_r else "filial:sede"
+    if _filial_r and _setor_r:
+        filial_tag = f"{_filial_r}:{_setor_r}"
+    elif _filial_r:
+        filial_tag = _filial_r
+    else:
+        filial_tag = "Sede"
+        
+    # Remover tags antigas no formato "Filial:Setor" ou "filial:sede" (que contêm ':' mas não são Atendente:)
+    # e também a string literal "Sede", pra evitar sujeira.
+    tags = [t for t in tags if not (':' in t and not t.startswith('Atendente:')) and t != 'Sede']
+
     if filial_tag not in tags:
         tags.append(filial_tag)
 
