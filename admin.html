@@ -252,6 +252,19 @@
           </div>
         </section>
 
+        <!-- Ferramentas Avançadas -->
+        <section class="admin-section" id="ferramentasSection" style="margin-top: 30px;">
+          <div class="section-header">
+            <h3>Ferramentas Avançadas do Banco</h3>
+          </div>
+          <div class="form-group" style="padding: 20px; background: var(--bg-card); border-radius: 12px; border: 1px dashed var(--border);">
+            <button class="btn-save-notes" style="background:#e74c3c; padding:8px 16px; border:none; border-radius:6px; color:white; font-weight:600; cursor:pointer;" onclick="execDeduplicate()">🧹 Otimizar e Unir Contatos Duplicados</button>
+            <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
+              Este script varre o banco de dados fundindo números fantasma ou mal formatados ao contato correto.
+            </p>
+          </div>
+        </section>
+
         <!-- Botões de Ação -->
         <h1>Gestão de Acessos</h1>
         <p style="color:var(--text-secondary)">Gerencie logins e vincule às instâncias</p>
@@ -491,6 +504,23 @@
       if (res) {
         alert('Webhooks salvos com sucesso!');
       }
+    }
+
+    async function execDeduplicate() {
+      if(!confirm('Deseja iniciar a faxina no banco de dados para unir contatos duplicados? Esta ação é permanente.')) return;
+      const btn = document.querySelector('button[onclick="execDeduplicate()"]');
+      const originalText = btn.textContent;
+      btn.textContent = 'Processando...';
+      btn.disabled = true;
+
+      const res = await apiFetch('/api/admin/deduplicate', 'POST');
+      if (res && res.merge_count !== undefined) {
+         alert(`Limpeza concluída!\n\n${res.merge_count} contatos aglutinados.\n${res.deleted_count} cadastros desnecessários removidos.`);
+         await loadAllInstances(); // Refresh to update possible states
+      }
+
+      btn.textContent = originalText;
+      btn.disabled = false;
     }
 
     async function loadAllInstances() {

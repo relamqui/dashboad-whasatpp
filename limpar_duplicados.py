@@ -80,6 +80,7 @@ def run_deduplication():
         # Confirma as alterações no banco
         db_sql.session.commit()
         print("Banco de dados otimizado e salvo com sucesso!")
+        return {"merge_count": merge_count, "deleted_count": deleted_count}
 
 if __name__ == "__main__":
     print("Iniciando varredura de deduplicação no banco de dados...")

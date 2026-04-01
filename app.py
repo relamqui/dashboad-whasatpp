@@ -1683,6 +1683,17 @@ def manage_settings():
     all_s = Setting.query.all()
     return jsonify({s.key: s.value for s in all_s})
 
+@app.route('/api/admin/deduplicate', methods=['POST'])
+@auth_required
+@admin_required
+def api_deduplicate():
+    try:
+        from limpar_duplicados import run_deduplication
+        stats = run_deduplication()
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/media/<media_type>')
 def stream_media(media_type):
     """Proxy de midia: busca o base64 da Evolution e retorna como stream.
