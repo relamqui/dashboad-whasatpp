@@ -1540,16 +1540,17 @@ def assign_chat(id):
     db_sql.session.commit()
     
     # Corpal Webhook — evento atender
+    now = get_now()
+    _filial_a = None
+    _setor_a = None
+    if user.filial_id:
+        _f = Filial.query.get(user.filial_id)
+        _filial_a = _f.name if _f else None
+    if user.setor_id:
+        _s = Setor.query.get(user.setor_id)
+        _setor_a = _s.name if _s else None
+        
     try:
-        now = get_now()
-        _filial_a = None
-        _setor_a = None
-        if user.filial_id:
-            _f = Filial.query.get(user.filial_id)
-            _filial_a = _f.name if _f else None
-        if user.setor_id:
-            _s = Setor.query.get(user.setor_id)
-            _setor_a = _s.name if _s else None
         corpal_payload = {
             "evento": "atender",
             "atendimento_id": str(uuid.uuid4()),
@@ -1564,21 +1565,20 @@ def assign_chat(id):
             "timestamp": now.isoformat()
         }
         requests.post(CORPAL_WEBHOOK_URL, json=corpal_payload, timeout=5)
-
-        # Novo Webhook específico para início de atendimento
-        try:
-            n8n_inicio_payload = {
-                "numero_lead": contact.phone,
-                "nome_atendente": user.name,
-                "setor": _setor_a,
-                "filial": _filial_a
-            }
-            requests.post("https://n8n-n8n.ioms5g.easypanel.host/webhook-test/corpal-inicio-atendimento", json=n8n_inicio_payload, timeout=5)
-        except Exception as e_n8n:
-            print(f"Erro no webhook n8n-inicio-atendimento: {e_n8n}")
-            
     except Exception as e:
         print(f"Erro webhook corpal (assign): {e}")
+
+    # Novo Webhook específico para início de atendimento
+    try:
+        n8n_inicio_payload = {
+            "numero_lead": contact.phone,
+            "nome_atendente": user.name,
+            "setor": _setor_a,
+            "filial": _filial_a
+        }
+        requests.post("https://n8n-n8n.ioms5g.easypanel.host/webhook/corpal-inicio-atendimento", json=n8n_inicio_payload, timeout=5)
+    except Exception as e_n8n:
+        print(f"Erro no webhook n8n-inicio-atendimento: {e_n8n}")
     
     _inst_room = contact.instance or 'unknown'
     socketio.emit('chat_assignment', {
