@@ -3,6 +3,11 @@ import os
 import jwt
 import uuid
 import datetime
+import pytz
+
+def get_now():
+    return datetime.datetime.now(pytz.timezone('America/Sao_Paulo'))
+
 from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit, join_room
@@ -836,7 +841,7 @@ def send_message():
         return jsonify({'error': f'Chat sendo atendido por {locked_contact.assigned_name or "outro atendente"}. Não é possível enviar mensagens.'}), 403
 
     try:
-        now = datetime.datetime.now()
+        now = get_now()
         time_str = now.strftime("%H:%M")
         
         # Chamada para a API externa (Evolution)
@@ -951,7 +956,7 @@ def send_audio():
         return jsonify({'error': 'instance, number e audio são obrigatórios'}), 400
 
     try:
-        now = datetime.datetime.now()
+        now = get_now()
         time_str = now.strftime("%H:%M")
 
         # Enviar via Evolution API
@@ -1013,7 +1018,7 @@ def send_image():
         return jsonify({'error': 'instance, number e image são obrigatórios'}), 400
 
     try:
-        now = datetime.datetime.now()
+        now = get_now()
         time_str = now.strftime("%H:%M")
 
         image_raw = image_b64
@@ -1075,7 +1080,7 @@ def send_video():
         return jsonify({'error': 'instance, number e video são obrigatórios'}), 400
 
     try:
-        now = datetime.datetime.now()
+        now = get_now()
         time_str = now.strftime("%H:%M")
 
         video_raw = video_b64
@@ -1138,7 +1143,7 @@ def send_document():
         return jsonify({'error': 'instance, number e document são obrigatórios'}), 400
 
     try:
-        now = datetime.datetime.now()
+        now = get_now()
         time_str = now.strftime("%H:%M")
 
         doc_raw = doc_b64
@@ -1232,12 +1237,12 @@ def bot_message_webhook():
             phone = str(data.get('phone'))
             phone = normalize_br_phone(phone)
             text = data.get('text')
-            msg_id = f"bot_{int(datetime.datetime.now().timestamp())}_{str(phone)[-4:]}"
+            msg_id = f"bot_{int(get_now().timestamp())}_{str(phone)[-4:]}"
         
         if not inst or not phone or not text:
             return jsonify({'error': 'Faltam campos obrigatorios: instance/instanceId, phone (ou remoteJid), e text'}), 400
             
-        now = datetime.datetime.now()
+        now = get_now()
         time_str = now.strftime("%H:%M")
         contact_id = f"c_{phone}_{inst}"
         
@@ -1340,7 +1345,7 @@ def webhook():
                        m.get('documentMessage', {}).get('caption') or \
                        "[Mensagem N8N/Mídia]"
 
-            now = datetime.datetime.now()
+            now = get_now()
             time_str = now.strftime("%H:%M")
             contact_id = f"c_{phone}_{instance}"
 
@@ -1532,7 +1537,7 @@ def assign_chat(id):
     
     # Corpal Webhook — evento atender
     try:
-        now = datetime.datetime.now()
+        now = get_now()
         _filial_a = None
         _setor_a = None
         if user.filial_id:
@@ -1609,7 +1614,7 @@ def release_chat(id):
     
     # Corpal Webhook — evento finalizar
     try:
-        now = datetime.datetime.now()
+        now = get_now()
         _old_user = User.query.get(request.user['id'])
         _filial_r = None
         _setor_r = None

@@ -22,6 +22,7 @@ EXPOSE 3008
 # Define variáveis de ambiente padrão
 ENV PORT=3008
 ENV DB_PATH=/app/data/db.json
+ENV TZ=America/Sao_Paulo
 
 # Comando para rodar a aplicação em produção com Gunicorn + Eventlet
 CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:3008", "app:app"]
