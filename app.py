@@ -61,6 +61,7 @@ class Setor(db_sql.Model):
     id = db_sql.Column(db_sql.Integer, primary_key=True)
     name = db_sql.Column(db_sql.String(100), nullable=False)
     filial_id = db_sql.Column(db_sql.Integer, db_sql.ForeignKey('filial.id'), nullable=False)
+    filial_name = db_sql.Column(db_sql.String(100), nullable=True)
 
 class User(db_sql.Model):
     id = db_sql.Column(db_sql.Integer, primary_key=True)
@@ -621,10 +622,10 @@ def manage_setores():
         if user.role == 'gestor' and filial.instance not in (user.instances or []):
             return jsonify({'error': 'Sem permissão para esta filial.'}), 403
 
-        novo_setor = Setor(name=name, filial_id=filial_id)
+        novo_setor = Setor(name=name, filial_id=filial_id, filial_name=filial.name)
         db_sql.session.add(novo_setor)
         db_sql.session.commit()
-        return jsonify({'id': novo_setor.id, 'name': novo_setor.name, 'filial_id': novo_setor.filial_id}), 201
+        return jsonify({'id': novo_setor.id, 'name': novo_setor.name, 'filial_id': novo_setor.filial_id, 'filial_name': novo_setor.filial_name}), 201
 
     user = User.query.get(request.user['id'])
     if user.role == 'gestor':
@@ -635,7 +636,7 @@ def manage_setores():
     else:
         setores = Setor.query.all()
 
-    return jsonify([{'id': s.id, 'name': s.name, 'filial_id': s.filial_id} for s in setores])
+    return jsonify([{'id': s.id, 'name': s.name, 'filial_id': s.filial_id, 'filial_name': s.filial_name} for s in setores])
 
 @app.route('/api/admin/setores/<int:setor_id>', methods=['PUT', 'DELETE'])
 @auth_required
@@ -661,13 +662,14 @@ def manage_setor_single(setor_id):
             if user.role == 'gestor' and new_filial and new_filial.instance not in (user.instances or []):
                 return jsonify({'error': 'Sem permissão para esta filial.'}), 403
             setor.filial_id = new_filial_id
+            setor.filial_name = new_filial.name if new_filial else setor.filial_name
             
         if new_name != setor.name:
             User.query.filter_by(setor_id=setor_id).update({'setor': new_name})
             setor.name = new_name
             
         db_sql.session.commit()
-        return jsonify({'id': setor.id, 'name': setor.name, 'filial_id': setor.filial_id})
+        return jsonify({'id': setor.id, 'name': setor.name, 'filial_id': setor.filial_id, 'filial_name': setor.filial_name})
 
     if request.method == 'DELETE':
         # Remover referências nos usuários
