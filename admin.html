@@ -419,6 +419,10 @@
 
       if (currentUserRole !== 'admin') {
         document.getElementById('integracoesSection').style.display = 'none';
+        
+        const ferramentasSec = document.getElementById('ferramentasSection');
+        if (ferramentasSec) ferramentasSec.style.display = 'none';
+        
         const n8nCard = document.getElementById('n8nBotCard');
         if (n8nCard) n8nCard.style.display = 'none';
       }
