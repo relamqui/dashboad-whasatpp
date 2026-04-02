@@ -320,25 +320,32 @@ def add_bot_tag():
     if not contact:
         print(f"[BOT/TAGS] Contato não encontrado, criando novo: {contact_id}")
         contact = Contact(
-            id=contact_id, name=f"+{phone}", phone=phone,
+            id=contact_id, name=phone, phone=phone,
             avatar=phone[0] if phone else "?", instance=inst,
             tags=['Novo Lead'], last_msg='', last_msg_time='', unread=0
         )
         db_sql.session.add(contact)
         db_sql.session.flush()
         
-    new_tags = []
+    current_tags = list(contact.tags or [])
+    added = False
     
     if filial and setor:
-        new_tags.append(f"{filial} - {setor}")
+        ftag = f"{filial}:{setor}"
+        if ftag not in current_tags:
+            current_tags.append(ftag)
+            added = True
     elif filial:
-        new_tags.append(filial)
+        if filial not in current_tags:
+            current_tags.append(filial)
+            added = True
             
-    if custom_tag:
-        new_tags.append(custom_tag)
+    if custom_tag and custom_tag not in current_tags:
+        current_tags.append(custom_tag)
+        added = True
         
-    if new_tags:
-        contact.tags = new_tags
+    if added:
+        contact.tags = current_tags
         flag_modified(contact, 'tags')
         db_sql.session.commit()
         print(f"[BOT/TAGS] Tags atualizadas para '{contact.id}': {contact.tags}")
@@ -866,7 +873,7 @@ def send_message():
         else:
             new_contact = Contact(
                 id=contact_id,
-                name=f"+{number}",
+                name=number,
                 phone=number,
                 avatar=number[0] if number else "?",
                 instance=inst,
@@ -1263,7 +1270,7 @@ def bot_message_webhook():
                 flag_modified(contact, 'tags')
         else:
             new_contact = Contact(
-                id=contact_id, name=f"+{phone}", phone=phone,
+                id=contact_id, name=phone, phone=phone,
                 avatar=phone[0] if phone else "?", instance=inst,
                 tags=['Novo Lead', 'BOT'], last_msg=text, last_msg_time=time_str, unread=0
             )

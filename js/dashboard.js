@@ -313,12 +313,16 @@ function renderChatList(contacts) {
             visibleTags.push({ label: filialTag, cls: typeof tagColor === 'function' ? tagColor(filialTag) : 'tag-blue' });
         }
         
-        if (!atendenteTag && !botTag && !filialTag) {
-            const other = c.tags.find(t => t !== 'Novo Lead' && t !== 'Leads');
-            if (other && typeof tagColor === 'function') {
-                visibleTags.push({ label: other, cls: tagColor(other) });
-            }
-        }
+        const otherTags = c.tags.filter(t => 
+             !t.toLowerCase().startsWith('atendente:') && 
+             t !== 'BOT' && 
+             !(typeof t === 'string' && t.includes(':') && !t.toLowerCase().startsWith('atendente:')) &&
+             t !== 'Novo Lead' && t !== 'Leads'
+        );
+        
+        otherTags.forEach(other => {
+             visibleTags.push({ label: other, cls: typeof tagColor === 'function' ? tagColor(other) : 'tag-gray' });
+        });
     }
     
     let tagsHtml = visibleTags.map(t => `<span class="chat-list-tag ${t.cls}">${escapeHtml(t.label)}</span>`).join('');
