@@ -1340,20 +1340,31 @@ def webhook():
             fromMe = key.get('fromMe', False)
             
             m = msg_data.get('message', {})
+            msg_id_key = key.get('id', '')
             if 'audioMessage' in m:
-                audio_info = m.get('audioMessage', {})
-                msg_id = key.get('id', '')
-                # Store [AUDIO_REF] with instance and message id so frontend can stream it
-                text = f"[AUDIO_REF] {instance}|{msg_id}"
-                print(f"[Audio] Guardando ref de audio: instance={instance} msg_id={msg_id}")
+                text = f"[AUDIO_REF] {instance}|{msg_id_key}"
+                print(f"[Audio] Guardando ref de audio: instance={instance} msg_id={msg_id_key}")
+            elif 'imageMessage' in m:
+                caption = m.get('imageMessage', {}).get('caption', '')
+                text = f"[IMAGE_REF] {instance}|{msg_id_key}"
+                if caption:
+                    text += f"\n{caption}"
+                print(f"[Image] Guardando ref de imagem: instance={instance} msg_id={msg_id_key}")
+            elif 'videoMessage' in m:
+                caption = m.get('videoMessage', {}).get('caption', '')
+                text = f"[VIDEO_REF] {instance}|{msg_id_key}"
+                if caption:
+                    text += f"\n{caption}"
+                print(f"[Video] Guardando ref de video: instance={instance} msg_id={msg_id_key}")
+            elif 'documentMessage' in m:
+                doc_name = m.get('documentMessage', {}).get('fileName', 'Arquivo')
+                text = f"[DOC_REF] {instance}|{msg_id_key}|{doc_name}"
+                print(f"[Doc] Guardando ref de documento: instance={instance} msg_id={msg_id_key}")
             else:
                 text = m.get('conversation') or \
                        m.get('extendedTextMessage', {}).get('text') or \
                        m.get('buttonsResponseMessage', {}).get('selectedDisplayText') or \
                        m.get('listResponseMessage', {}).get('title') or \
-                       m.get('imageMessage', {}).get('caption') or \
-                       m.get('videoMessage', {}).get('caption') or \
-                       m.get('documentMessage', {}).get('caption') or \
                        "[Mensagem N8N/Mídia]"
 
             now = get_now()
