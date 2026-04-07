@@ -852,12 +852,6 @@
       if (currentUserRole === 'admin') {
         payload.role = document.getElementById('userRole').value;
       }
-      if (currentUserRole === 'gestor' && !id) {
-        if (allInstances.length > 0) {
-          const inst = allInstances[0].instanceName || allInstances[0].name;
-          payload.instances = [inst];
-        }
-      }
 
       try {
         const response = await fetch(endpoint, {

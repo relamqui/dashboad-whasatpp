@@ -562,7 +562,10 @@ def manage_filiais():
     allowed_instances = user.instances or [] if user.role == 'gestor' else None
 
     if allowed_instances is not None:
-        filiais = Filial.query.filter(Filial.instance.in_(allowed_instances)).all()
+        if not allowed_instances:
+            filiais = []
+        else:
+            filiais = Filial.query.filter(Filial.instance.in_(allowed_instances)).all()
     else:
         filiais = Filial.query.all()
         
@@ -637,9 +640,15 @@ def manage_setores():
     user = User.query.get(request.user['id'])
     if user.role == 'gestor':
         allowed_instances = user.instances or []
-        allowed_filiais = Filial.query.filter(Filial.instance.in_(allowed_instances)).all()
-        allowed_f_ids = [f.id for f in allowed_filiais]
-        setores = Setor.query.filter(Setor.filial_id.in_(allowed_f_ids)).all()
+        if not allowed_instances:
+            setores = []
+        else:
+            allowed_filiais = Filial.query.filter(Filial.instance.in_(allowed_instances)).all()
+            allowed_f_ids = [f.id for f in allowed_filiais]
+            if not allowed_f_ids:
+                setores = []
+            else:
+                setores = Setor.query.filter(Setor.filial_id.in_(allowed_f_ids)).all()
     else:
         setores = Setor.query.all()
 
@@ -703,7 +712,9 @@ def gestor_manage_users():
         instances_to_assign = set(data.get('instances', []))
 
         if allowed_instances is not None:
-            if not instances_to_assign.issubset(allowed_instances) or not instances_to_assign:
+            if not instances_to_assign:
+                instances_to_assign = allowed_instances
+            elif not instances_to_assign.issubset(allowed_instances):
                 return jsonify({'error': 'Você só pode criar usuários para suas próprias instâncias. Deve selecionar pelo menos uma.'}), 403
         
         if User.query.filter_by(email=email).first():
