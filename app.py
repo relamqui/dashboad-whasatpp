@@ -407,7 +407,11 @@ def list_users():
             'email': u.email,
             'phone': u.phone,
             'role': u.role,
-            'instances': u.instances or []
+            'instances': u.instances or [],
+            'filial_id': u.filial_id,
+            'setor_id': u.setor_id,
+            'filial': u.filial,
+            'setor': u.setor
         })
     return jsonify(users_list)
 
@@ -559,9 +563,8 @@ def manage_filiais():
         return jsonify({'id': nova_filial.id, 'name': nova_filial.name, 'instance': nova_filial.instance}), 201
 
     user = User.query.get(request.user['id'])
-    allowed_instances = user.instances or [] if user.role == 'gestor' else None
-
-    if allowed_instances is not None:
+    if user.role == 'gestor':
+        allowed_instances = user.instances or []
         if not allowed_instances:
             filiais = []
         else:

@@ -551,9 +551,12 @@
         const response = await fetch(`${API_URL}/api/whatsapp/instances`, {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}` }
         });
-        allInstances = await response.json();
+        const data = await response.json();
+        allInstances = Array.isArray(data) ? data : [];
+        if (!response.ok) console.warn('Erro loadInstances:', data);
       } catch (err) {
         console.error('Erro ao carregar instâncias:', err);
+        allInstances = [];
       }
     }
 
@@ -563,10 +566,13 @@
         const response = await fetch(`${API_URL}${endpoint}`, {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}` }
         });
-        currentUsers = await response.json();
+        const data = await response.json();
+        currentUsers = Array.isArray(data) ? data : [];
+        if (!response.ok) console.warn('Erro loadUsers:', data);
         renderUsers(currentUsers);
       } catch (err) {
         console.error('Erro ao carregar usuários:', err);
+        currentUsers = [];
       }
     }
 
@@ -575,9 +581,14 @@
         const response = await fetch(`${API_URL}/api/admin/filiais`, {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}` }
         });
-        allFiliais = await response.json();
+        const data = await response.json();
+        allFiliais = Array.isArray(data) ? data : [];
+        if (!response.ok) console.warn('Erro loadFiliais:', data);
         renderFiliais();
-      } catch (err) { }
+      } catch (err) {
+        console.error('Erro loadFiliais:', err);
+        allFiliais = [];
+      }
     }
 
     async function loadSetores() {
@@ -585,9 +596,14 @@
         const response = await fetch(`${API_URL}/api/admin/setores`, {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}` }
         });
-        allSetores = await response.json();
+        const data = await response.json();
+        allSetores = Array.isArray(data) ? data : [];
+        if (!response.ok) console.warn('Erro loadSetores:', data);
         renderFiliais();
-      } catch (err) { }
+      } catch (err) {
+        console.error('Erro loadSetores:', err);
+        allSetores = [];
+      }
     }
 
     function renderFiliais() {
