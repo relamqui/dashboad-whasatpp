@@ -434,14 +434,19 @@ def create_user():
     if f_obj: filial_name = f_obj.name
     s_obj = Setor.query.get(s_id)
     if s_obj: setor_name = s_obj.name
+    # Auto-preencher instances quando for gestor, baseado na filial
+    auto_instances = []
+    role = data.get('role', 'user') if data.get('role') in ('user', 'gestor') else 'user'
+    if role == 'gestor' and f_obj and f_obj.instance:
+        auto_instances = [f_obj.instance]
     
     new_user = User(
         name=data.get('name'),
         email=data.get('email'),
         phone=data.get('phone'),
         password=data.get('password'),
-        role=data.get('role', 'user') if data.get('role') in ('user', 'gestor') else 'user',
-        instances=[],
+        role=role,
+        instances=auto_instances,
         filial_id=f_id,
         setor_id=s_id,
         filial=data.get('filial') or filial_name,
@@ -541,6 +546,20 @@ def link_instance():
 
 # ─── Gestor / Filial / Setor Routes ─────────────────────────────────────────
 
+def get_gestor_allowed_instances(user):
+    """Resolve as instâncias permitidas de um gestor.
+    Prioridade: user.instances > derivado do filial_id.
+    Retorna um set de nomes de instância."""
+    # Se já tem instâncias explicitamente atribuídas, usar elas
+    if user.instances and len(user.instances) > 0:
+        return set(user.instances)
+    # Senão, derivar da filial vinculada ao gestor
+    if user.filial_id:
+        filial = Filial.query.get(user.filial_id)
+        if filial and filial.instance:
+            return {filial.instance}
+    return set()
+
 @app.route('/api/admin/filiais', methods=['GET', 'POST'])
 @auth_required
 @admin_or_gestor_required
@@ -554,7 +573,7 @@ def manage_filiais():
             return jsonify({'error': 'Nome e Instância são obrigatórios'}), 400
             
         user = User.query.get(request.user['id'])
-        if user.role == 'gestor' and instance not in (user.instances or []):
+        if user.role == 'gestor' and instance not in get_gestor_allowed_instances(user):
             return jsonify({'error': 'Você não tem permissão para gerenciar esta instância.'}), 403
 
         nova_filial = Filial(name=name, instance=instance)
@@ -563,18 +582,13 @@ def manage_filiais():
         return jsonify({'id': nova_filial.id, 'name': nova_filial.name, 'instance': nova_filial.instance}), 201
 
     user = User.query.get(request.user['id'])
-    print(f"[DEBUG FILIAIS GET] user_id={user.id} role={user.role} instances={user.instances} filial_id={user.filial_id}")
     if user.role == 'gestor':
-        allowed_instances = user.instances or []
-        print(f"[DEBUG FILIAIS GET] Gestor allowed_instances={allowed_instances}")
+        allowed_instances = get_gestor_allowed_instances(user)
+        print(f"[GESTOR FILIAIS] user={user.id} allowed_instances={allowed_instances}")
         if not allowed_instances:
-            if user.filial_id:
-                filiais = Filial.query.filter_by(id=user.filial_id).all()
-            else:
-                filiais = []
+            filiais = []
         else:
-            filiais = Filial.query.filter(Filial.instance.in_(allowed_instances)).all()
-        print(f"[DEBUG FILIAIS GET] Retornando {len(filiais)} filiais")
+            filiais = Filial.query.filter(Filial.instance.in_(list(allowed_instances))).all()
     else:
         filiais = Filial.query.all()
         
@@ -590,14 +604,14 @@ def manage_filial_single(filial_id):
 
     user = User.query.get(request.user['id'])
     # Gestor só pode gerenciar filiais das suas instâncias
-    if user.role == 'gestor' and filial.instance not in (user.instances or []):
+    if user.role == 'gestor' and filial.instance not in get_gestor_allowed_instances(user):
         return jsonify({'error': 'Sem permissão para esta filial.'}), 403
 
     if request.method == 'PUT':
         data = request.json
         name = data.get('name', filial.name)
         instance = data.get('instance', filial.instance)
-        if user.role == 'gestor' and instance not in (user.instances or []):
+        if user.role == 'gestor' and instance not in get_gestor_allowed_instances(user):
             return jsonify({'error': 'Sem permissão para esta instância.'}), 403
             
         if name != filial.name:
@@ -647,24 +661,18 @@ def manage_setores():
         return jsonify({'id': novo_setor.id, 'name': novo_setor.name, 'filial_id': novo_setor.filial_id, 'filial_name': novo_setor.filial_name}), 201
 
     user = User.query.get(request.user['id'])
-    print(f"[DEBUG SETORES GET] user_id={user.id} role={user.role} instances={user.instances} setor_id={user.setor_id}")
     if user.role == 'gestor':
-        allowed_instances = user.instances or []
+        allowed_instances = get_gestor_allowed_instances(user)
+        print(f"[GESTOR SETORES] user={user.id} allowed_instances={allowed_instances}")
         if not allowed_instances:
-            if user.filial_id:
-                setores = Setor.query.filter_by(filial_id=user.filial_id).all()
-            elif user.setor_id:
-                setores = Setor.query.filter_by(id=user.setor_id).all()
-            else:
-                setores = []
+            setores = []
         else:
-            allowed_filiais = Filial.query.filter(Filial.instance.in_(allowed_instances)).all()
+            allowed_filiais = Filial.query.filter(Filial.instance.in_(list(allowed_instances))).all()
             allowed_f_ids = [f.id for f in allowed_filiais]
             if not allowed_f_ids:
                 setores = []
             else:
                 setores = Setor.query.filter(Setor.filial_id.in_(allowed_f_ids)).all()
-        print(f"[DEBUG SETORES GET] Retornando {len(setores)} setores")
     else:
         setores = Setor.query.all()
 
@@ -681,7 +689,7 @@ def manage_setor_single(setor_id):
     user = User.query.get(request.user['id'])
     filial = Filial.query.get(setor.filial_id)
     # Gestor só pode gerenciar setores das suas instâncias
-    if user.role == 'gestor' and filial and filial.instance not in (user.instances or []):
+    if user.role == 'gestor' and filial and filial.instance not in get_gestor_allowed_instances(user):
         return jsonify({'error': 'Sem permissão para este setor.'}), 403
 
     if request.method == 'PUT':
@@ -691,7 +699,7 @@ def manage_setor_single(setor_id):
         
         if new_filial_id:
             new_filial = Filial.query.get(new_filial_id)
-            if user.role == 'gestor' and new_filial and new_filial.instance not in (user.instances or []):
+            if user.role == 'gestor' and new_filial and new_filial.instance not in get_gestor_allowed_instances(user):
                 return jsonify({'error': 'Sem permissão para esta filial.'}), 403
             setor.filial_id = new_filial_id
             setor.filial_name = new_filial.name if new_filial else setor.filial_name
@@ -715,7 +723,7 @@ def manage_setor_single(setor_id):
 @admin_or_gestor_required
 def gestor_manage_users():
     user_req = User.query.get(request.user['id'])
-    allowed_instances = set(user_req.instances or []) if user_req.role == 'gestor' else None
+    allowed_instances = get_gestor_allowed_instances(user_req) if user_req.role == 'gestor' else None
 
     if request.method == 'POST':
         data = request.json
@@ -791,7 +799,7 @@ def gestor_update_user(user_id):
         return jsonify({'error': 'Usuário não encontrado ou não permitido'}), 404
 
     user_req = User.query.get(request.user['id'])
-    allowed_instances = set(user_req.instances or []) if user_req.role == 'gestor' else None
+    allowed_instances = get_gestor_allowed_instances(user_req) if user_req.role == 'gestor' else None
     
     if allowed_instances is not None:
         if not set(target_user.instances or []).intersection(allowed_instances):
@@ -845,7 +853,10 @@ def get_instances():
         
         if request.user.get('role') != 'admin':
             user = User.query.get(request.user['id'])
-            allowed = user.instances or []
+            if user.role == 'gestor':
+                allowed = get_gestor_allowed_instances(user)
+            else:
+                allowed = set(user.instances or [])
             all_inst = [i for i in all_inst if (i.get('instanceName') or i.get('name')) in allowed]
             
         return jsonify(all_inst)
