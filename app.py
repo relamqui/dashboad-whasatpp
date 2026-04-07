@@ -379,6 +379,7 @@ def login():
             'id': user.id,
             'email': user.email,
             'role': user.role,
+            'filial_id': user.filial_id,
             'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)
         }, JWT_SECRET, algorithm="HS256")
         
@@ -389,6 +390,7 @@ def login():
                 'name': user.name,
                 'email': user.email,
                 'role': user.role,
+                'filial_id': user.filial_id,
                 'instances': user.instances or []
             }
         })

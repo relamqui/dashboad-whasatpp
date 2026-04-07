@@ -411,6 +411,7 @@
     let allFiliais = [];
     let allSetores = [];
     let currentUserRole = 'user';
+    let currentUserFilialId = null;
 
     // Carregar dados iniciais
     window.onload = async () => {
@@ -420,9 +421,8 @@
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));
         currentUserRole = payload.role;
+        currentUserFilialId = payload.filial_id || null;
       } catch (e) { }
-
-      console.log('[DEBUG] currentUserRole:', currentUserRole);
 
       if (currentUserRole !== 'admin') {
         document.getElementById('integracoesSection').style.display = 'none';
@@ -433,14 +433,10 @@
       }
 
       await loadAllInstances();
-      console.log('[DEBUG] allInstances:', allInstances);
       if (currentUserRole === 'admin') await renderWebhooksList();
       await loadFiliais();
-      console.log('[DEBUG] allFiliais:', allFiliais);
       await loadSetores();
-      console.log('[DEBUG] allSetores:', allSetores);
       await loadUsers();
-      console.log('[DEBUG] currentUsers:', currentUsers);
 
       updateSelects();
     };
@@ -668,9 +664,16 @@
     }
 
     function filterSetores() {
-      const filIdStr = document.getElementById('userFilial').value;
       const setSel = document.getElementById('userSetor');
       setSel.innerHTML = '<option value="">Selecione um setor</option>';
+
+      // Para gestor, filtrar sempre pela filial do gestor
+      if (currentUserRole === 'gestor' && currentUserFilialId) {
+        setSel.innerHTML += allSetores.filter(s => s.filial_id === currentUserFilialId).map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+        return;
+      }
+
+      const filIdStr = document.getElementById('userFilial').value;
       if (filIdStr) {
         const filId = parseInt(filIdStr);
         setSel.innerHTML += allSetores.filter(s => s.filial_id === filId).map(s => `<option value="${s.id}">${s.name}</option>`).join('');
@@ -805,6 +808,15 @@
       document.getElementById('userRole').value = 'user';
       // Mostrar campo de role apenas para Admin
       document.getElementById('roleFieldGroup').style.display = currentUserRole === 'admin' ? 'flex' : 'none';
+      // Para gestor: esconder filial (usar a própria) e filtrar setores
+      const filialGroup = document.getElementById('userFilial').closest('.form-group');
+      if (currentUserRole === 'gestor') {
+        filialGroup.style.display = 'none';
+        document.getElementById('userFilial').removeAttribute('required');
+      } else {
+        filialGroup.style.display = 'flex';
+        document.getElementById('userFilial').setAttribute('required', '');
+      }
       // Repopular os selects de filial/setor após o reset do form
       updateSelects();
       filterSetores();
@@ -828,6 +840,15 @@
       document.getElementById('userRole').value = user.role === 'gestor' ? 'gestor' : 'user';
       // Mostrar campo de role apenas para Admin
       document.getElementById('roleFieldGroup').style.display = currentUserRole === 'admin' ? 'flex' : 'none';
+      // Para gestor: esconder filial
+      const filialGroup = document.getElementById('userFilial').closest('.form-group');
+      if (currentUserRole === 'gestor') {
+        filialGroup.style.display = 'none';
+        document.getElementById('userFilial').removeAttribute('required');
+      } else {
+        filialGroup.style.display = 'flex';
+        document.getElementById('userFilial').setAttribute('required', '');
+      }
       document.getElementById('userModal').style.display = 'flex';
     }
 
@@ -850,7 +871,12 @@
       let filial_id = filialIdStr ? parseInt(filialIdStr) : null;
       let filial_name = null;
 
-      if (filial_id) {
+      // Para gestor: usar a filial do próprio gestor
+      if (currentUserRole === 'gestor' && currentUserFilialId) {
+        filial_id = currentUserFilialId;
+        const foundF = allFiliais.find(x => x.id === filial_id);
+        if (foundF) filial_name = foundF.name;
+      } else if (filial_id) {
         const foundF = allFiliais.find(x => x.id === filial_id);
         if (foundF) filial_name = foundF.name;
       }
