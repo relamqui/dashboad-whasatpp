@@ -587,10 +587,18 @@ def manage_filiais():
     if user.role == 'gestor':
         allowed_instances = get_gestor_allowed_instances(user)
         print(f"[GESTOR FILIAIS] user={user.id} allowed_instances={allowed_instances}")
-        if not allowed_instances:
-            filiais = []
+        
+        from sqlalchemy import or_
+        filters = []
+        if allowed_instances:
+            filters.append(Filial.instance.in_(list(allowed_instances)))
+        if user.filial_id:
+            filters.append(Filial.id == user.filial_id)
+            
+        if filters:
+            filiais = Filial.query.filter(or_(*filters)).all()
         else:
-            filiais = Filial.query.filter(Filial.instance.in_(list(allowed_instances))).all()
+            filiais = []
     else:
         filiais = Filial.query.all()
         
@@ -666,15 +674,20 @@ def manage_setores():
     if user.role == 'gestor':
         allowed_instances = get_gestor_allowed_instances(user)
         print(f"[GESTOR SETORES] user={user.id} allowed_instances={allowed_instances}")
-        if not allowed_instances:
+        
+        allowed_f_ids = set()
+        if user.filial_id:
+            allowed_f_ids.add(user.filial_id)
+            
+        if allowed_instances:
+            allowed_filiais = Filial.query.filter(Filial.instance.in_(list(allowed_instances))).all()
+            for f in allowed_filiais:
+                allowed_f_ids.add(f.id)
+                
+        if not allowed_f_ids:
             setores = []
         else:
-            allowed_filiais = Filial.query.filter(Filial.instance.in_(list(allowed_instances))).all()
-            allowed_f_ids = [f.id for f in allowed_filiais]
-            if not allowed_f_ids:
-                setores = []
-            else:
-                setores = Setor.query.filter(Setor.filial_id.in_(allowed_f_ids)).all()
+            setores = Setor.query.filter(Setor.filial_id.in_(list(allowed_f_ids))).all()
     else:
         setores = Setor.query.all()
 
@@ -773,7 +786,12 @@ def gestor_manage_users():
     # GET
     all_users = User.query.filter(User.role == 'user').all()
     if allowed_instances is not None:
-        visible_users = [u for u in all_users if set(u.instances or []).intersection(allowed_instances)]
+        visible_users = []
+        for u in all_users:
+            has_instance = set(u.instances or []).intersection(allowed_instances)
+            is_same_filial = (u.filial_id == user_req.filial_id) if user_req.filial_id else False
+            if has_instance or is_same_filial:
+                visible_users.append(u)
     else:
         visible_users = all_users
 
@@ -804,7 +822,9 @@ def gestor_update_user(user_id):
     allowed_instances = get_gestor_allowed_instances(user_req) if user_req.role == 'gestor' else None
     
     if allowed_instances is not None:
-        if not set(target_user.instances or []).intersection(allowed_instances):
+        has_instance = bool(set(target_user.instances or []).intersection(allowed_instances))
+        is_same_filial = (target_user.filial_id == user_req.filial_id) if user_req.filial_id else False
+        if not (has_instance or is_same_filial):
              return jsonify({'error': 'Você não tem permissão sobre este usuário'}), 403
 
     if request.method == 'PUT':
