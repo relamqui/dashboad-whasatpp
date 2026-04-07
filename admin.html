@@ -422,6 +422,8 @@
         currentUserRole = payload.role;
       } catch (e) { }
 
+      console.log('[DEBUG] currentUserRole:', currentUserRole);
+
       if (currentUserRole !== 'admin') {
         document.getElementById('integracoesSection').style.display = 'none';
         const n8nCard = document.getElementById('n8nBotCard');
@@ -431,10 +433,14 @@
       }
 
       await loadAllInstances();
+      console.log('[DEBUG] allInstances:', allInstances);
       if (currentUserRole === 'admin') await renderWebhooksList();
       await loadFiliais();
+      console.log('[DEBUG] allFiliais:', allFiliais);
       await loadSetores();
+      console.log('[DEBUG] allSetores:', allSetores);
       await loadUsers();
+      console.log('[DEBUG] currentUsers:', currentUsers);
 
       updateSelects();
     };
@@ -799,6 +805,8 @@
       document.getElementById('userRole').value = 'user';
       // Mostrar campo de role apenas para Admin
       document.getElementById('roleFieldGroup').style.display = currentUserRole === 'admin' ? 'flex' : 'none';
+      // Repopular os selects de filial/setor após o reset do form
+      updateSelects();
       filterSetores();
       document.getElementById('userModal').style.display = 'flex';
     }

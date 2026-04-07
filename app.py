@@ -563,12 +563,18 @@ def manage_filiais():
         return jsonify({'id': nova_filial.id, 'name': nova_filial.name, 'instance': nova_filial.instance}), 201
 
     user = User.query.get(request.user['id'])
+    print(f"[DEBUG FILIAIS GET] user_id={user.id} role={user.role} instances={user.instances} filial_id={user.filial_id}")
     if user.role == 'gestor':
         allowed_instances = user.instances or []
+        print(f"[DEBUG FILIAIS GET] Gestor allowed_instances={allowed_instances}")
         if not allowed_instances:
-            filiais = []
+            if user.filial_id:
+                filiais = Filial.query.filter_by(id=user.filial_id).all()
+            else:
+                filiais = []
         else:
             filiais = Filial.query.filter(Filial.instance.in_(allowed_instances)).all()
+        print(f"[DEBUG FILIAIS GET] Retornando {len(filiais)} filiais")
     else:
         filiais = Filial.query.all()
         
@@ -641,10 +647,16 @@ def manage_setores():
         return jsonify({'id': novo_setor.id, 'name': novo_setor.name, 'filial_id': novo_setor.filial_id, 'filial_name': novo_setor.filial_name}), 201
 
     user = User.query.get(request.user['id'])
+    print(f"[DEBUG SETORES GET] user_id={user.id} role={user.role} instances={user.instances} setor_id={user.setor_id}")
     if user.role == 'gestor':
         allowed_instances = user.instances or []
         if not allowed_instances:
-            setores = []
+            if user.filial_id:
+                setores = Setor.query.filter_by(filial_id=user.filial_id).all()
+            elif user.setor_id:
+                setores = Setor.query.filter_by(id=user.setor_id).all()
+            else:
+                setores = []
         else:
             allowed_filiais = Filial.query.filter(Filial.instance.in_(allowed_instances)).all()
             allowed_f_ids = [f.id for f in allowed_filiais]
@@ -652,6 +664,7 @@ def manage_setores():
                 setores = []
             else:
                 setores = Setor.query.filter(Setor.filial_id.in_(allowed_f_ids)).all()
+        print(f"[DEBUG SETORES GET] Retornando {len(setores)} setores")
     else:
         setores = Setor.query.all()
 
