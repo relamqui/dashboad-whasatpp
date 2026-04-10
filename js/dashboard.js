@@ -73,7 +73,46 @@ async function loadContacts() {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (res.ok) {
-      CONTACTS = await res.json();
+      let contacts = await res.json();
+      
+      // ── Filtro de segurança no cliente (segunda camada) ──
+      const userData = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
+      if (userData.role !== 'admin') {
+        const myFilial = userData.filial || '';
+        const mySetor = userData.setor || '';
+        
+        contacts = contacts.filter(c => {
+          const tags = c.tags || [];
+          
+          // Detectar tags no formato "Filial:Setor" que NÃO são da minha filial
+          for (const t of tags) {
+            if (typeof t === 'string' && t.includes(':') && !t.toLowerCase().startsWith('atendente:')) {
+              const tagFilial = t.split(':')[0];
+              // Se a tag tem uma filial diferente da minha, excluir este contato
+              if (myFilial && tagFilial !== myFilial) {
+                return false;
+              }
+            }
+          }
+          
+          // Para gestor: exibir contatos com tag da sua filial ou sem tag de filial
+          if (userData.role === 'gestor') {
+            return true; // Já passou pelo filtro acima (não tem tag de outra filial)
+          }
+          
+          // Para user comum: só exibir se tem a tag exata filial:setor ou atribuído a mim
+          if (myFilial && mySetor) {
+            const requiredTag = `${myFilial}:${mySetor}`;
+            const hasMyTag = tags.includes(requiredTag);
+            const assignedToMe = c.assigned_to === userData.id;
+            return hasMyTag || assignedToMe;
+          }
+          
+          return true;
+        });
+      }
+      
+      CONTACTS = contacts;
     }
   } catch (e) {
     console.error('Erro ao carregar contatos:', e);
@@ -123,6 +162,31 @@ function initSocket(token) {
       
       if (contact) {
         contact.tags = data.tags;
+        
+        // ── Filtro de segurança: remover contato se agora tem tag de outra filial ──
+        const userData = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
+        if (userData.role !== 'admin' && userData.filial) {
+          const newTags = data.tags || [];
+          for (const t of newTags) {
+            if (typeof t === 'string' && t.includes(':') && !t.toLowerCase().startsWith('atendente:')) {
+              const tagFilial = t.split(':')[0];
+              if (tagFilial !== userData.filial) {
+                // Contato foi roteado para outra filial — remover da lista
+                console.log('[Socket] Contato roteado para outra filial, removendo:', contact.id, t);
+                CONTACTS = CONTACTS.filter(c => c.id !== contact.id);
+                if (currentChat && currentChat.id === contact.id) {
+                  currentChat = null;
+                  document.getElementById('chatEmpty').style.display = 'flex';
+                  document.getElementById('chatInterface').style.display = 'none';
+                }
+                renderChatList(getFilteredContacts());
+                renderTagFilter();
+                return;
+              }
+            }
+          }
+        }
+        
         if (currentChat && currentChat.id === contact.id) {
             currentChat.tags = data.tags;
             updateContactDetails(currentChat);
