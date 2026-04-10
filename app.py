@@ -1561,6 +1561,9 @@ def get_contacts():
                 # Também permitir tag só da filial (sem setor)
                 allowed_tags.add(filial_name)
                 
+                # Coletar TODOS os nomes de filiais para detectar tags de outras filiais
+                all_filial_names = set(f.name for f in Filial.query.all())
+                
                 print(f"[GESTOR CONTACTS] user={user.id} filial={filial_name} allowed_tags={allowed_tags}")
                 
                 filtered = []
@@ -1568,10 +1571,34 @@ def get_contacts():
                 filial_user_ids = set(u.id for u in User.query.filter_by(filial_id=user.filial_id).all())
                 for c in contacts:
                     contact_tags = c.tags or []
+                    
+                    # Verifica se o contato tem tag filial:setor de OUTRA filial
+                    has_other_filial_tag = False
+                    has_any_filial_tag = False
+                    for t in contact_tags:
+                        if ':' in t and not t.lower().startswith('atendente:'):
+                            # É uma tag no formato Filial:Setor
+                            tag_filial = t.split(':')[0]
+                            if tag_filial in all_filial_names:
+                                has_any_filial_tag = True
+                                if t not in allowed_tags and tag_filial != filial_name:
+                                    has_other_filial_tag = True
+                        elif t in all_filial_names:
+                            # Tag apenas com nome de filial
+                            has_any_filial_tag = True
+                            if t != filial_name:
+                                has_other_filial_tag = True
+                    
+                    # Se tem tag de outra filial, sempre excluir
+                    if has_other_filial_tag:
+                        continue
+                    
                     # Verifica se alguma tag do contato bate com as tags permitidas
                     has_allowed_tag = any(t in allowed_tags for t in contact_tags)
                     # Também mostra chats atribuídos ao gestor ou a qualquer user da filial
                     is_assigned_to_filial = (c.assigned_to in filial_user_ids) if c.assigned_to else False
+                    
+                    # Contato precisa ter tag da filial OU estar atribuído a alguém da filial
                     if has_allowed_tag or is_assigned_to_filial:
                         filtered.append(c)
                 contacts = filtered
