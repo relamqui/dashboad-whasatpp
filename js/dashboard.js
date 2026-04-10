@@ -40,6 +40,16 @@ window.onload = async () => {
   renderInstanceSelector(); // Novo: carregar chips dinâmicos
   renderTagFilter();
   renderChatList(getFilteredContacts());
+  
+  // Para usuários não-admin, recarregar contatos periodicamente
+  // para que novos chats com tags corretas apareçam automaticamente
+  if (user.role !== 'admin') {
+    setInterval(async () => {
+      await loadContacts();
+      renderTagFilter();
+      renderChatList(getFilteredContacts());
+    }, 30000); // A cada 30 segundos
+  }
 };
 
 function renderUserProfile(user) {
@@ -200,6 +210,14 @@ function handleIncomingWebhook(data) {
     let type = fromMe ? 'out' : 'in';
 
     if (!contact) {
+      // Para usuários não-admin, só exibir contatos que já foram carregados
+      // do servidor (com filtro de filial/setor). Novos contatos via socket
+      // serão vistos após o próximo reload de contatos.
+      const userData = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
+      if (userData.role !== 'admin') {
+        console.log('[Socket] Contato novo ignorado (filtro de filial/setor):', phone, instName);
+        return;
+      }
       const instName = data.instance || data._instance || 'unknown';
       contact = {
         id: 'c_' + phone + '_' + instName,

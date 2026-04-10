@@ -26,7 +26,7 @@ CORPAL_WEBHOOK_URL = 'https://n8n-n8n.ioms5g.easypanel.host/webhook/corpal-metri
 
 app = Flask(__name__)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 JWT_SECRET = os.getenv('JWT_SECRET', 'secret')
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -380,8 +380,19 @@ def login():
             'email': user.email,
             'role': user.role,
             'filial_id': user.filial_id,
+            'setor_id': user.setor_id,
             'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)
         }, JWT_SECRET, algorithm="HS256")
+        
+        # Resolve filial/setor names for the user response
+        filial_name = user.filial
+        setor_name = user.setor
+        if not filial_name and user.filial_id:
+            f_obj = Filial.query.get(user.filial_id)
+            if f_obj: filial_name = f_obj.name
+        if not setor_name and user.setor_id:
+            s_obj = Setor.query.get(user.setor_id)
+            if s_obj: setor_name = s_obj.name
         
         return jsonify({
             'token': token if isinstance(token, str) else token.decode('utf-8'),
@@ -391,6 +402,9 @@ def login():
                 'email': user.email,
                 'role': user.role,
                 'filial_id': user.filial_id,
+                'setor_id': user.setor_id,
+                'filial': filial_name,
+                'setor': setor_name,
                 'instances': user.instances or []
             }
         })
@@ -1513,10 +1527,82 @@ def get_contacts():
     allowed_instances = user.instances or []
     
     if request.user.get('role') == 'admin':
+        # Admin vê todos os chats
         contacts = Contact.query.all()
     else:
-        # Filter contacts by instances the user has access to
-        contacts = Contact.query.filter(Contact.instance.in_(allowed_instances)).all()
+        # Buscar contatos das instâncias permitidas
+        if allowed_instances:
+            contacts = Contact.query.filter(Contact.instance.in_(allowed_instances)).all()
+        else:
+            # Se não tem instância, tentar derivar da filial
+            if user.filial_id:
+                filial = Filial.query.get(user.filial_id)
+                if filial and filial.instance:
+                    contacts = Contact.query.filter(Contact.instance == filial.instance).all()
+                else:
+                    contacts = []
+            else:
+                contacts = []
+        
+        # Filtrar por tags de filial:setor conforme cargo
+        if user.role == 'gestor':
+            # Gestor vê chats de TODOS os setores da sua filial
+            filial_name = user.filial
+            if not filial_name and user.filial_id:
+                f_obj = Filial.query.get(user.filial_id)
+                if f_obj: filial_name = f_obj.name
+            
+            if filial_name:
+                # Buscar nomes de todos os setores da filial do gestor
+                setores_da_filial = Setor.query.filter_by(filial_id=user.filial_id).all()
+                allowed_tags = set()
+                for s in setores_da_filial:
+                    allowed_tags.add(f"{filial_name}:{s.name}")
+                # Também permitir tag só da filial (sem setor)
+                allowed_tags.add(filial_name)
+                
+                print(f"[GESTOR CONTACTS] user={user.id} filial={filial_name} allowed_tags={allowed_tags}")
+                
+                filtered = []
+                # Buscar IDs de atendentes da mesma filial para ver chats em atendimento
+                filial_user_ids = set(u.id for u in User.query.filter_by(filial_id=user.filial_id).all())
+                for c in contacts:
+                    contact_tags = c.tags or []
+                    # Verifica se alguma tag do contato bate com as tags permitidas
+                    has_allowed_tag = any(t in allowed_tags for t in contact_tags)
+                    # Também mostra chats atribuídos ao gestor ou a qualquer user da filial
+                    is_assigned_to_filial = (c.assigned_to in filial_user_ids) if c.assigned_to else False
+                    if has_allowed_tag or is_assigned_to_filial:
+                        filtered.append(c)
+                contacts = filtered
+            # Se não tem filial, não filtra por tag (fica vazio pois sem instância)
+        else:
+            # Usuário comum: vê apenas chats com tag exata da sua filial:setor
+            filial_name = user.filial
+            setor_name = user.setor
+            if not filial_name and user.filial_id:
+                f_obj = Filial.query.get(user.filial_id)
+                if f_obj: filial_name = f_obj.name
+            if not setor_name and user.setor_id:
+                s_obj = Setor.query.get(user.setor_id)
+                if s_obj: setor_name = s_obj.name
+            
+            if filial_name and setor_name:
+                required_tag = f"{filial_name}:{setor_name}"
+                print(f"[USER CONTACTS] user={user.id} required_tag={required_tag}")
+                
+                filtered = []
+                for c in contacts:
+                    contact_tags = c.tags or []
+                    has_tag = required_tag in contact_tags
+                    # Também mostra chats atribuídos ao próprio usuário
+                    is_assigned_to_me = (c.assigned_to == user.id)
+                    if has_tag or is_assigned_to_me:
+                        filtered.append(c)
+                contacts = filtered
+            # Se não tem filial/setor configurado, não mostra nada
+            elif filial_name or setor_name:
+                contacts = [c for c in contacts if c.assigned_to == user.id]
         
     contacts_list = []
     for c in contacts:
