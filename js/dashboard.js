@@ -471,7 +471,6 @@ async function openChat(id) {
   document.getElementById('detailsInstance').textContent = contact.instanceName || contact.instance;
 
   // Carrega mensagens da API
-  const token = localStorage.getItem('wp_crm_token');
   try {
     const res = await fetch(`${API_URL}/api/contacts/${contact.id}/messages`, {
       headers: { 'Authorization': `Bearer ${token}` }
