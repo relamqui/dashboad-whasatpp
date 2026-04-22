@@ -92,11 +92,11 @@ class Contact(db_sql.Model):
     id = db_sql.Column(db_sql.String(150), primary_key=True) # c_phone_instance
     name = db_sql.Column(db_sql.String(100), nullable=False)
     phone = db_sql.Column(db_sql.String(30), nullable=False) # No longer unique
-    avatar = db_sql.Column(db_sql.String(10), nullable=True)
+    avatar = db_sql.Column(db_sql.String(20), nullable=True)
     instance = db_sql.Column(db_sql.String(100), nullable=True)
     tags = db_sql.Column(db_sql.JSON, default=['Novo Lead'])
     last_msg = db_sql.Column(db_sql.Text, nullable=True)
-    last_msg_time = db_sql.Column(db_sql.String(10), nullable=True)
+    last_msg_time = db_sql.Column(db_sql.String(20), nullable=True)
     unread = db_sql.Column(db_sql.Integer, default=0)
     assigned_to = db_sql.Column(db_sql.Integer, db_sql.ForeignKey('user.id'), nullable=True)
     assigned_name = db_sql.Column(db_sql.String(100), nullable=True)
@@ -105,8 +105,8 @@ class Message(db_sql.Model):
     id = db_sql.Column(db_sql.String(100), primary_key=True)
     contact_id = db_sql.Column(db_sql.String(150), db_sql.ForeignKey('contact.id'), nullable=False)
     text = db_sql.Column(db_sql.Text, nullable=False)
-    type = db_sql.Column(db_sql.String(10), nullable=False) # 'in' or 'out'
-    time = db_sql.Column(db_sql.String(10), nullable=False)
+    type = db_sql.Column(db_sql.String(20), nullable=False) # 'in' or 'out'
+    time = db_sql.Column(db_sql.String(20), nullable=False)
     timestamp = db_sql.Column(db_sql.BigInteger, nullable=False)
     instance = db_sql.Column(db_sql.String(100), nullable=True)
 
@@ -186,6 +186,19 @@ def migrate_to_sql():
             db_sql.session.rollback()
         
         # Se Users estiver vazio, tenta migrar do JSON
+        
+        try:
+            db_sql.session.execute(db_sql.text('ALTER TABLE contact ALTER COLUMN last_msg_time TYPE VARCHAR(20)'))
+            db_sql.session.commit()
+        except Exception:
+            db_sql.session.rollback()
+            
+        try:
+            db_sql.session.execute(db_sql.text('ALTER TABLE message ALTER COLUMN time TYPE VARCHAR(20)'))
+            db_sql.session.commit()
+        except Exception:
+            db_sql.session.rollback()
+
         if User.query.first() is None:
             print("Migrando dados do JSON para o SQL...")
             old_db = load_db()
