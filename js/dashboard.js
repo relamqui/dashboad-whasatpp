@@ -1736,29 +1736,59 @@ function startNewChat() {
     return;
   }
 
-  // Verifica se já existe localmente
-  // Agora a busca tem que considerar o número e a instância
-  let contact = CONTACTS.find(c => (c.phone === number || c.phone === '+' + number) && c.instance === instance);
+  const token = localStorage.getItem('wp_crm_token');
   
-  if (!contact) {
-    contact = {
-      id: 'c_' + number + '_' + instance,
-      name: '+' + number,
-      phone: number,
-      avatar: number[0],
-      instance: instance,
-      lastMsg: 'Iniciando conversa...',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      unread: 0,
-      messages: [],
-      tags: ['Novo Lead']
-    };
-    CONTACTS.unshift(contact);
-  }
+  fetch(`${API_URL}/api/contacts`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ phone: number, instance: instance })
+  })
+  .then(res => {
+    if (!res.ok) throw res;
+    return res.json();
+  })
+  .then(newContactData => {
+    // Verifica se já existe localmente
+    let contact = CONTACTS.find(c => c.id === newContactData.id);
+    
+    if (!contact) {
+      contact = {
+        id: newContactData.id,
+        name: newContactData.name,
+        phone: newContactData.phone,
+        avatar: newContactData.avatar,
+        instance: newContactData.instance,
+        lastMsg: 'Iniciando conversa...',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        unread: 0,
+        messages: [],
+        tags: newContactData.tags,
+        assigned_to: newContactData.assigned_to,
+        assigned_name: newContactData.assigned_name
+      };
+      CONTACTS.unshift(contact);
+    } else {
+        contact.assigned_to = newContactData.assigned_to;
+        contact.assigned_name = newContactData.assigned_name;
+        contact.tags = newContactData.tags;
+    }
 
-  closeNewChatModal();
-  renderChatList(getFilteredContacts());
-  openChat(contact.id);
+    closeNewChatModal();
+    renderChatList(getFilteredContacts());
+    openChat(contact.id);
+  })
+  .catch(async (err) => {
+    console.error(err);
+    if (err.json) {
+        const errorData = await err.json();
+        showToast(errorData.error || 'Erro ao iniciar conversa');
+    } else {
+        showToast('Erro de conexão ao iniciar chat.');
+    }
+  });
 }
 
 function logout() {

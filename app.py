@@ -1716,6 +1716,115 @@ def update_contact(id):
     })
 
 
+@app.route('/api/contacts', methods=['POST'])
+@auth_required
+def create_contact():
+    data = request.json
+    phone = data.get('phone')
+    instance = data.get('instance')
+    
+    if not phone or not instance:
+        return jsonify({'error': 'Telefone e Instância são obrigatórios'}), 400
+        
+    phone = normalize_br_phone(str(phone).strip())
+    contact_id = f"c_{phone}_{instance}"
+    
+    contact = Contact.query.filter_by(id=contact_id).first()
+    if not contact:
+        contact = Contact(
+            id=contact_id,
+            name="+" + phone,
+            phone=phone,
+            avatar=phone[0] if phone else "?",
+            instance=instance,
+            tags=['Novo Lead'],
+            last_msg='Iniciando conversa...',
+            last_msg_time=get_now().strftime('%H:%M'),
+            unread=0
+        )
+        db_sql.session.add(contact)
+    
+    user = User.query.get(request.user['id'])
+    contact.assigned_to = user.id
+    contact.assigned_name = user.name
+    
+    atendente_tag = f"Atendente: {user.name}"
+    tags = list(contact.tags or [])
+    if atendente_tag not in tags:
+        tags.append(atendente_tag)
+    contact.tags = tags
+    flag_modified(contact, 'tags')
+    
+    db_sql.session.commit()
+    
+    now = get_now()
+    _filial_a = None
+    _setor_a = None
+    if user.filial_id:
+        _f = Filial.query.get(user.filial_id)
+        _filial_a = _f.name if _f else None
+    if user.setor_id:
+        _s = Setor.query.get(user.setor_id)
+        _setor_a = _s.name if _s else None
+        
+    try:
+        corpal_payload = {
+            "evento": "atender",
+            "atendimento_id": str(uuid.uuid4()),
+            "numero_lead": contact.phone,
+            "instancia": contact.instance,
+            "filial": _filial_a,
+            "setor": _setor_a,
+            "nome_atendente": user.name,
+            "atendente_id": str(user.id),
+            "direcao": None,
+            "mensagem": None,
+            "timestamp": now.isoformat()
+        }
+        requests.post(CORPAL_WEBHOOK_URL, json=corpal_payload, timeout=5)
+    except Exception as e:
+        print(f"Erro webhook corpal (assign novo chat): {e}")
+
+    try:
+        if os.getenv('WEBHOOK_ATENDIMENTO_URL'):
+            webhook_payload = {
+                "evento": "atendimento_iniciado",
+                "contato": {
+                    "id": contact.id,
+                    "phone": contact.phone,
+                    "name": contact.name,
+                    "instance": contact.instance
+                },
+                "atendente": {
+                    "id": user.id,
+                    "name": user.name,
+                    "email": user.email
+                },
+                "timestamp": now.isoformat()
+            }
+            requests.post(os.getenv('WEBHOOK_ATENDIMENTO_URL'), json=webhook_payload, timeout=5)
+    except Exception as e:
+        print(f"Erro webhook atendimento (assign novo chat): {e}")
+
+    socketio.emit('chat_assigned', {
+        'contact_id': contact.id,
+        'assigned_to': user.id,
+        'assigned_name': user.name,
+        'tags': contact.tags
+    })
+
+    return jsonify({
+        'id': contact.id,
+        'name': contact.name,
+        'phone': contact.phone,
+        'avatar': contact.avatar,
+        'instance': contact.instance,
+        'tags': contact.tags,
+        'assigned_to': contact.assigned_to,
+        'assigned_name': contact.assigned_name
+    }), 201
+
+
 @app.route('/api/contacts/<id>/read', methods=['POST'])
 @auth_required
 def read_contact(id):
