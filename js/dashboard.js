@@ -266,7 +266,7 @@ function handleIncomingWebhook(data) {
     }
     
     const now = new Date();
-    const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+    const time = `${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
 
     const instName = data.instance || data._instance || 'unknown';
     let contact = CONTACTS.find(c => c.phone === phone && c.instance === instName);
@@ -434,6 +434,13 @@ async function openChat(id) {
   
   currentChat = contact;
   contact.unread = 0;
+  
+  // Limpa o alerta de mensagens não lidas no backend
+  const token = localStorage.getItem('wp_crm_token');
+  fetch(`${API_URL}/api/contacts/${id}/read`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` }
+  }).catch(e => console.error('Erro ao marcar chat como lido:', e));
   
   // Update chat list active state
   document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
@@ -721,7 +728,7 @@ async function sendMessage() {
   if (!text || !currentChat) return;
 
   const now = new Date();
-  const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+  const time = `${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
 
   // 1. Atualiza Localmente (Optimistic Update)
   const tempId = 'temp_' + Date.now();
@@ -957,7 +964,7 @@ async function sendAudioMessage(base64Data) {
   if (!currentChat) return;
 
   const now = new Date();
-  const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+  const time = `${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
 
   // Optimistic update — show local player immediately using base64 data URL
   const tempId = 'audio_temp_' + Date.now();
@@ -1300,7 +1307,7 @@ async function sendImageMessage(file) {
   reader.onload = async function(e) {
     const base64 = e.target.result;
     const now = new Date();
-    const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+    const time = `${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
     
     const tempId = 'img_temp_' + Date.now();
     const tempText = `[IMAGE_LOCAL] ${base64}`;
@@ -1365,7 +1372,7 @@ async function sendVideoMessage(file) {
   reader.onload = async function(e) {
     const base64 = e.target.result;
     const now = new Date();
-    const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+    const time = `${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
     
     const tempId = 'vid_temp_' + Date.now();
     const tempText = `[VIDEO_LOCAL] ${base64}`;
@@ -1430,7 +1437,7 @@ async function sendDocumentMessage(file) {
   reader.onload = async function(e) {
     const base64 = e.target.result;
     const now = new Date();
-    const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+    const time = `${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
     
     const tempId = 'doc_temp_' + Date.now();
     const tempText = `📎 Arquivo: ${file.name}`;

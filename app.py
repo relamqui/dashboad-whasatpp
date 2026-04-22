@@ -939,7 +939,7 @@ def send_message():
 
     try:
         now = get_now()
-        time_str = now.strftime("%H:%M")
+        time_str = now.strftime("%d/%m %H:%M")
         
         # Chamada para a API externa (Evolution)
         url = f"{os.getenv('EVOLUTION_API_URL')}/message/sendText/{inst}"
@@ -1054,7 +1054,7 @@ def send_audio():
 
     try:
         now = get_now()
-        time_str = now.strftime("%H:%M")
+        time_str = now.strftime("%d/%m %H:%M")
 
         # Enviar via Evolution API
         # Evolution exige base64 puro (sem prefixo data:audio/xxx;base64,)
@@ -1116,7 +1116,7 @@ def send_image():
 
     try:
         now = get_now()
-        time_str = now.strftime("%H:%M")
+        time_str = now.strftime("%d/%m %H:%M")
 
         image_raw = image_b64
         mimetype = "image/jpeg"
@@ -1178,7 +1178,7 @@ def send_video():
 
     try:
         now = get_now()
-        time_str = now.strftime("%H:%M")
+        time_str = now.strftime("%d/%m %H:%M")
 
         video_raw = video_b64
         mimetype = "video/mp4"
@@ -1241,7 +1241,7 @@ def send_document():
 
     try:
         now = get_now()
-        time_str = now.strftime("%H:%M")
+        time_str = now.strftime("%d/%m %H:%M")
 
         doc_raw = doc_b64
         mimetype = "application/pdf"
@@ -1340,7 +1340,7 @@ def bot_message_webhook():
             return jsonify({'error': 'Faltam campos obrigatorios: instance/instanceId, phone (ou remoteJid), e text'}), 400
             
         now = get_now()
-        time_str = now.strftime("%H:%M")
+        time_str = now.strftime("%d/%m %H:%M")
         contact_id = f"c_{phone}_{inst}"
         
         # Update Contact
@@ -1454,7 +1454,7 @@ def webhook():
                        "[Mensagem N8N/Mídia]"
 
             now = get_now()
-            time_str = now.strftime("%H:%M")
+            time_str = now.strftime("%d/%m %H:%M")
             contact_id = f"c_{phone}_{instance}"
 
             # Update/Create Contact
@@ -1701,6 +1701,18 @@ def update_contact(id):
         'avatar': contact.avatar,
         'tags': contact.tags
     })
+
+
+@app.route('/api/contacts/<id>/read', methods=['POST'])
+@auth_required
+def read_contact(id):
+    contact = Contact.query.filter_by(id=id).first()
+    if not contact:
+        return jsonify({'error': 'Contato não encontrado'}), 404
+        
+    contact.unread = 0
+    db_sql.session.commit()
+    return jsonify({'success': True})
 
 @app.route('/api/contacts/<id>/messages', methods=['GET'])
 @auth_required
