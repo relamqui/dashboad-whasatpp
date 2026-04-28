@@ -114,6 +114,16 @@ class Setting(db_sql.Model):
     key = db_sql.Column(db_sql.String(50), primary_key=True)
     value = db_sql.Column(db_sql.Text, nullable=True)
 
+class AtendimentoChat(db_sql.Model):
+    __tablename__ = 'atendimentos_chat'
+    id = db_sql.Column(db_sql.Integer, primary_key=True, autoincrement=True)
+    numero = db_sql.Column(db_sql.Text, nullable=True, unique=True)
+    status = db_sql.Column(db_sql.String(50), nullable=True)
+    atendente = db_sql.Column(db_sql.String(100), nullable=True)
+    registro_time_chat = db_sql.Column(db_sql.Text, nullable=True)
+    ultimo_setor = db_sql.Column(db_sql.String(255), nullable=True)
+    ultimo_atendente = db_sql.Column(db_sql.String(255), nullable=True)
+
 # ─── Utils ──────────────────────────────────────────────────────────────────
 def normalize_br_phone(phone_str):
     if not phone_str: return ""
@@ -1785,17 +1795,27 @@ def create_contact():
     except Exception as e:
         print(f"Erro webhook corpal (assign novo chat): {e}")
 
-    # Webhook específico para início de atendimento (atualiza atendimentos_chat para o bot não entrar)
+    # Atualiza tabela atendimentos_chat diretamente para bloquear o bot
     try:
-        n8n_inicio_payload = {
-            "numero_lead": contact.phone,
-            "nome_atendente": user.name,
-            "setor": _setor_a,
-            "filial": _filial_a
-        }
-        requests.post("https://n8n-n8n.ioms5g.easypanel.host/webhook/corpal-inicio-atendimento", json=n8n_inicio_payload, timeout=5)
-    except Exception as e_n8n:
-        print(f"Erro no webhook n8n-inicio-atendimento (novo chat): {e_n8n}")
+        atend_chat = AtendimentoChat.query.filter_by(numero=contact.phone).first()
+        if atend_chat:
+            atend_chat.atendente = user.name
+            atend_chat.status = 'em_atendimento'
+            atend_chat.ultimo_atendente = user.name
+        else:
+            atend_chat = AtendimentoChat(
+                numero=contact.phone,
+                status='em_atendimento',
+                atendente=user.name,
+                ultimo_atendente=user.name,
+                registro_time_chat=get_now().isoformat()
+            )
+            db_sql.session.add(atend_chat)
+        db_sql.session.commit()
+        print(f"[NOVO CHAT] atendimentos_chat atualizado: numero={contact.phone}, atendente={user.name}")
+    except Exception as e_ac:
+        db_sql.session.rollback()
+        print(f"Erro ao atualizar atendimentos_chat (novo chat): {e_ac}")
 
     try:
         if os.getenv('WEBHOOK_ATENDIMENTO_URL'):
@@ -1917,17 +1937,27 @@ def assign_chat(id):
     except Exception as e:
         print(f"Erro webhook corpal (assign): {e}")
 
-    # Novo Webhook específico para início de atendimento
+    # Atualiza tabela atendimentos_chat diretamente para bloquear o bot
     try:
-        n8n_inicio_payload = {
-            "numero_lead": contact.phone,
-            "nome_atendente": user.name,
-            "setor": _setor_a,
-            "filial": _filial_a
-        }
-        requests.post("https://n8n-n8n.ioms5g.easypanel.host/webhook/corpal-inicio-atendimento", json=n8n_inicio_payload, timeout=5)
-    except Exception as e_n8n:
-        print(f"Erro no webhook n8n-inicio-atendimento: {e_n8n}")
+        atend_chat = AtendimentoChat.query.filter_by(numero=contact.phone).first()
+        if atend_chat:
+            atend_chat.atendente = user.name
+            atend_chat.status = 'em_atendimento'
+            atend_chat.ultimo_atendente = user.name
+        else:
+            atend_chat = AtendimentoChat(
+                numero=contact.phone,
+                status='em_atendimento',
+                atendente=user.name,
+                ultimo_atendente=user.name,
+                registro_time_chat=get_now().isoformat()
+            )
+            db_sql.session.add(atend_chat)
+        db_sql.session.commit()
+        print(f"[ASSIGN] atendimentos_chat atualizado: numero={contact.phone}, atendente={user.name}")
+    except Exception as e_ac:
+        db_sql.session.rollback()
+        print(f"Erro ao atualizar atendimentos_chat (assign): {e_ac}")
     
     _inst_room = contact.instance or 'unknown'
     socketio.emit('chat_assignment', {
