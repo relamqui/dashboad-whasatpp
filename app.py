@@ -1785,6 +1785,18 @@ def create_contact():
     except Exception as e:
         print(f"Erro webhook corpal (assign novo chat): {e}")
 
+    # Webhook específico para início de atendimento (atualiza atendimentos_chat para o bot não entrar)
+    try:
+        n8n_inicio_payload = {
+            "numero_lead": contact.phone,
+            "nome_atendente": user.name,
+            "setor": _setor_a,
+            "filial": _filial_a
+        }
+        requests.post("https://n8n-n8n.ioms5g.easypanel.host/webhook/corpal-inicio-atendimento", json=n8n_inicio_payload, timeout=5)
+    except Exception as e_n8n:
+        print(f"Erro no webhook n8n-inicio-atendimento (novo chat): {e_n8n}")
+
     try:
         if os.getenv('WEBHOOK_ATENDIMENTO_URL'):
             webhook_payload = {
