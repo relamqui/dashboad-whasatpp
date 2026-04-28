@@ -1800,12 +1800,12 @@ def create_contact():
         atend_chat = AtendimentoChat.query.filter_by(numero=contact.phone).first()
         if atend_chat:
             atend_chat.atendente = user.name
-            atend_chat.status = 'em_atendimento'
+            atend_chat.status = 'atendente'
             atend_chat.ultimo_atendente = user.name
         else:
             atend_chat = AtendimentoChat(
                 numero=contact.phone,
-                status='em_atendimento',
+                status='atendente',
                 atendente=user.name,
                 ultimo_atendente=user.name,
                 registro_time_chat=get_now().isoformat()
@@ -1942,12 +1942,12 @@ def assign_chat(id):
         atend_chat = AtendimentoChat.query.filter_by(numero=contact.phone).first()
         if atend_chat:
             atend_chat.atendente = user.name
-            atend_chat.status = 'em_atendimento'
+            atend_chat.status = 'atendente'
             atend_chat.ultimo_atendente = user.name
         else:
             atend_chat = AtendimentoChat(
                 numero=contact.phone,
-                status='em_atendimento',
+                status='atendente',
                 atendente=user.name,
                 ultimo_atendente=user.name,
                 registro_time_chat=get_now().isoformat()
