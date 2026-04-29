@@ -613,17 +613,18 @@ def get_gestor_allowed_instances(user):
 
 @app.route('/api/admin/filiais', methods=['GET', 'POST'])
 @auth_required
-@admin_or_gestor_required
 def manage_filiais():
+    user = User.query.get(request.user['id'])
     if request.method == 'POST':
+        if user.role not in ('admin', 'gestor'):
+            return jsonify({'error': 'Acesso negado. Apenas administradores ou gestores.'}), 403
+            
         data = request.json
         name = data.get('name')
         instance = data.get('instance')
         
         if not name or not instance:
             return jsonify({'error': 'Nome e Instância são obrigatórios'}), 400
-            
-        user = User.query.get(request.user['id'])
         if user.role == 'gestor' and instance not in get_gestor_allowed_instances(user):
             return jsonify({'error': 'Você não tem permissão para gerenciar esta instância.'}), 403
 
@@ -632,8 +633,14 @@ def manage_filiais():
         db_sql.session.commit()
         return jsonify({'id': nova_filial.id, 'name': nova_filial.name, 'instance': nova_filial.instance}), 201
 
-    user = User.query.get(request.user['id'])
-    if user.role == 'gestor':
+    if user.role == 'user':
+        if user.filial_id:
+            filial = Filial.query.get(user.filial_id)
+            if filial:
+                return jsonify([{'id': filial.id, 'name': filial.name, 'instance': filial.instance}])
+        return jsonify([])
+        
+    elif user.role == 'gestor':
         allowed_instances = get_gestor_allowed_instances(user)
         print(f"[GESTOR FILIAIS] user={user.id} allowed_instances={allowed_instances}")
         
@@ -696,9 +703,12 @@ def manage_filial_single(filial_id):
 
 @app.route('/api/admin/setores', methods=['GET', 'POST'])
 @auth_required
-@admin_or_gestor_required
 def manage_setores():
+    user = User.query.get(request.user['id'])
     if request.method == 'POST':
+        if user.role not in ('admin', 'gestor'):
+            return jsonify({'error': 'Acesso negado. Apenas administradores ou gestores.'}), 403
+            
         data = request.json
         name = data.get('name')
         filial_id = data.get('filial_id')
@@ -709,8 +719,6 @@ def manage_setores():
         filial = Filial.query.get(filial_id)
         if not filial:
             return jsonify({'error': 'Filial não encontrada'}), 400
-
-        user = User.query.get(request.user['id'])
         if user.role == 'gestor' and filial.instance not in (user.instances or []):
             return jsonify({'error': 'Sem permissão para esta filial.'}), 403
 
@@ -719,8 +727,13 @@ def manage_setores():
         db_sql.session.commit()
         return jsonify({'id': novo_setor.id, 'name': novo_setor.name, 'filial_id': novo_setor.filial_id, 'filial_name': novo_setor.filial_name}), 201
 
-    user = User.query.get(request.user['id'])
-    if user.role == 'gestor':
+    if user.role == 'user':
+        if user.filial_id:
+            setores = Setor.query.filter_by(filial_id=user.filial_id).all()
+            return jsonify([{'id': s.id, 'name': s.name, 'filial_id': s.filial_id, 'filial_name': s.filial_name} for s in setores])
+        return jsonify([])
+        
+    elif user.role == 'gestor':
         allowed_instances = get_gestor_allowed_instances(user)
         print(f"[GESTOR SETORES] user={user.id} allowed_instances={allowed_instances}")
         
@@ -2144,7 +2157,6 @@ def api_migrate_filial_names():
 
 @app.route('/api/chat/transfer', methods=['POST'])
 @auth_required
-@admin_required
 def chat_transfer():
     data = request.json
     contact_id = data.get('contact_id')
@@ -2157,6 +2169,17 @@ def chat_transfer():
     contact = Contact.query.get(contact_id)
     if not contact:
         return jsonify({'error': 'Contato não encontrado'}), 404
+        
+    user = User.query.get(request.user['id'])
+    
+    # Bloquear transferência se chat está sendo atendido por outra pessoa
+    if contact.assigned_to and contact.assigned_to != user.id:
+        return jsonify({'error': 'Este chat já está sendo atendido por outra pessoa'}), 403
+        
+    # Usuários normais só podem transferir para setores de sua própria filial
+    if user.role == 'user':
+        if not user.filial or user.filial != filial:
+            return jsonify({'error': 'Você só pode transferir para a sua própria filial'}), 403
         
     n8n_webhook_url = "https://n8n-n8n.ioms5g.easypanel.host/webhook/chamar"
     

@@ -60,10 +60,10 @@ function renderUserProfile(user) {
     document.getElementById('navAdmin').style.display = 'flex';
   }
   
-  if (user.role === 'admin') {
-    const btnTransfer = document.getElementById('btnTransferChat');
-    if (btnTransfer) btnTransfer.style.display = 'flex';
-  }
+  // O botão de transferência agora é controlado dentro do updateAttendanceBar
+  // Mas vamos garantir que ele está disponível no DOM.
+  const btnTransfer = document.getElementById('btnTransferChat');
+  if (btnTransfer) btnTransfer.style.display = 'none'; // Será ativado no openChat/updateAttendanceBar
   
   if (user.role === 'user') {
     const navInst = document.getElementById('navInstances');
@@ -1521,12 +1521,16 @@ function updateAttendanceBar(contact) {
     actions.innerHTML = `<button class="btn-atender" onclick="assignChat()">✋ Atender</button>`;
     if (inputBar) inputBar.style.display = 'flex';
     if (inputLocked) inputLocked.style.display = 'none';
+    const btnTransfer = document.getElementById('btnTransferChat');
+    if (btnTransfer) btnTransfer.style.display = 'flex';
   } else if (isAssignedToMe) {
     // Eu estou atendendo
     info.innerHTML = `<span class="att-status-dot active"></span> <span>Você está atendendo este chat</span>`;
     actions.innerHTML = `<button class="btn-finalizar" onclick="releaseChat()">✖ Finalizar</button>`;
     if (inputBar) inputBar.style.display = 'flex';
     if (inputLocked) inputLocked.style.display = 'none';
+    const btnTransfer = document.getElementById('btnTransferChat');
+    if (btnTransfer) btnTransfer.style.display = 'flex';
   } else {
     // Outro atendente está atendendo
     info.innerHTML = `<span class="att-status-dot active"></span> <span>Atendido por <span class="att-label">${contact.assigned_name}</span></span>`;
@@ -1536,6 +1540,8 @@ function updateAttendanceBar(contact) {
       inputLocked.style.display = 'flex';
       document.getElementById('inputLockedText').textContent = `Chat sendo atendido por ${contact.assigned_name}`;
     }
+    const btnTransfer = document.getElementById('btnTransferChat');
+    if (btnTransfer) btnTransfer.style.display = 'none';
   }
 }
 
