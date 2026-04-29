@@ -641,6 +641,11 @@ def manage_filiais():
         return jsonify([])
         
     elif user.role == 'gestor':
+        # Se for para transferência, permite ver todas as filiais
+        if request.args.get('action') == 'transfer':
+            filiais = Filial.query.all()
+            return jsonify([{'id': f.id, 'name': f.name, 'instance': f.instance} for f in filiais])
+            
         allowed_instances = get_gestor_allowed_instances(user)
         print(f"[GESTOR FILIAIS] user={user.id} allowed_instances={allowed_instances}")
         
@@ -734,6 +739,11 @@ def manage_setores():
         return jsonify([])
         
     elif user.role == 'gestor':
+        # Se for para transferência, permite ver todos os setores
+        if request.args.get('action') == 'transfer':
+            setores = Setor.query.all()
+            return jsonify([{'id': s.id, 'name': s.name, 'filial_id': s.filial_id, 'filial_name': s.filial_name} for s in setores])
+            
         allowed_instances = get_gestor_allowed_instances(user)
         print(f"[GESTOR SETORES] user={user.id} allowed_instances={allowed_instances}")
         

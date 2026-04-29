@@ -1881,7 +1881,7 @@ async function openTransferModal() {
   const select = document.getElementById('transferFilialSelect');
   select.innerHTML = '<option value="">Carregando...</option>';
   try {
-    const res = await fetch(`${API_URL}/api/admin/filiais`, {
+    const res = await fetch(`${API_URL}/api/admin/filiais?action=transfer`, {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}` }
     });
     const filiais = await res.json();
@@ -1912,7 +1912,7 @@ async function loadSetoresForTransfer() {
   }
   select.innerHTML = '<option value="">Carregando...</option>';
   try {
-    const res = await fetch(`${API_URL}/api/admin/setores`, {
+    const res = await fetch(`${API_URL}/api/admin/setores?action=transfer`, {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}` }
     });
     const setores = await res.json();
