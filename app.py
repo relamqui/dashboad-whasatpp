@@ -2142,6 +2142,79 @@ def api_migrate_filial_names():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/chat/transfer', methods=['POST'])
+@auth_required
+@admin_required
+def chat_transfer():
+    data = request.json
+    contact_id = data.get('contact_id')
+    filial = data.get('filial')
+    setor = data.get('setor')
+    
+    if not contact_id or not filial or not setor:
+        return jsonify({'error': 'Parâmetros inválidos (contact_id, filial, setor são obrigatórios)'}), 400
+        
+    contact = Contact.query.get(contact_id)
+    if not contact:
+        return jsonify({'error': 'Contato não encontrado'}), 404
+        
+    n8n_webhook_url = "https://n8n-n8n.ioms5g.easypanel.host/webhook/chamar"
+    
+    payload = {
+        "numero": contact.phone,
+        "filial": filial,
+        "setor": setor
+    }
+    
+    try:
+        res = requests.post(n8n_webhook_url, json=payload, timeout=10)
+        res.raise_for_status()
+    except Exception as e:
+        print(f"Erro ao disparar webhook de transferência n8n: {e}")
+        return jsonify({'error': 'Erro ao comunicar com n8n'}), 500
+        
+    # Opcional: Atualiza a tag localmente para refletir o novo setor
+    current_tags = list(contact.tags or [])
+    tag_name = f"{filial}:{setor}"
+    if tag_name not in current_tags:
+        current_tags.append(tag_name)
+        contact.tags = current_tags
+        flag_modified(contact, 'tags')
+        
+    # Liberar o atendimento (remover assigned_to)
+    if contact.assigned_to:
+        contact.assigned_to = None
+        contact.assigned_name = None
+    
+    db_sql.session.commit()
+    
+    # Emite evento para os clientes atualizarem
+    socketio.emit('chat_tags_updated', {
+        'id': contact.id,
+        'tags': list(contact.tags or [])
+    }, room=f"instance_{contact.instance or 'unknown'}")
+    
+    socketio.emit('chat_tags_updated', {
+        'id': contact.id,
+        'tags': list(contact.tags or [])
+    }, room='admin')
+    
+    socketio.emit('chat_assigned', {
+        'contact_id': contact.id,
+        'assigned_to': None,
+        'assigned_name': None,
+        'tags': list(contact.tags or [])
+    }, room=f"instance_{contact.instance or 'unknown'}")
+    
+    socketio.emit('chat_assigned', {
+        'contact_id': contact.id,
+        'assigned_to': None,
+        'assigned_name': None,
+        'tags': list(contact.tags or [])
+    }, room='admin')
+    
+    return jsonify({'success': True})
+
 @app.route('/api/media/<media_type>')
 def stream_media(media_type):
     """Proxy de midia: busca o base64 da Evolution e retorna como stream.

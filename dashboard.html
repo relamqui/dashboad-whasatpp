@@ -138,6 +138,9 @@
           <button class="icon-btn" title="Buscar">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </button>
+          <button class="icon-btn" id="btnTransferChat" title="Transferir Conversa" onclick="openTransferModal()" style="display:none">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 10 20 15 15 20"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/></svg>
+          </button>
           <button class="icon-btn" title="Mais opções" onclick="openChatMenu()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>
           </button>
@@ -297,6 +300,33 @@
         </select>
       </div>
       <button class="btn-save-notes" style="width:100%;" onclick="startNewChat()">Iniciar Chat</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Transferir Chat -->
+<div class="modal-overlay" id="transferChatModal" style="display:none" onclick="closeTransferModal()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Transferir Conversa</h3>
+      <button class="icon-btn" onclick="closeTransferModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div style="padding: 20px;">
+      <div style="margin-bottom: 15px;">
+        <label style="display:block;margin-bottom:5px;font-size:12px;color:var(--text-muted)">Filial</label>
+        <select id="transferFilialSelect" style="width:100%;padding:10px;background:#2a3942;border:1px solid #3b4a54;border-radius:8px;color:white;outline:none;" onchange="loadSetoresForTransfer()">
+          <option value="">Carregando...</option>
+        </select>
+      </div>
+      <div style="margin-bottom: 20px;">
+        <label style="display:block;margin-bottom:5px;font-size:12px;color:var(--text-muted)">Setor</label>
+        <select id="transferSetorSelect" style="width:100%;padding:10px;background:#2a3942;border:1px solid #3b4a54;border-radius:8px;color:white;outline:none;">
+          <option value="">Selecione uma filial primeiro</option>
+        </select>
+      </div>
+      <button class="btn-save-notes" style="width:100%;" onclick="confirmTransferChat()">Confirmar Transferência</button>
     </div>
   </div>
 </div>

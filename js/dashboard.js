@@ -60,6 +60,11 @@ function renderUserProfile(user) {
     document.getElementById('navAdmin').style.display = 'flex';
   }
   
+  if (user.role === 'admin') {
+    const btnTransfer = document.getElementById('btnTransferChat');
+    if (btnTransfer) btnTransfer.style.display = 'flex';
+  }
+  
   if (user.role === 'user') {
     const navInst = document.getElementById('navInstances');
     if (navInst) navInst.style.display = 'none';
@@ -1857,5 +1862,116 @@ function closeLightbox(e) {
       overlay.style.display = 'none';
       document.getElementById('lightboxImg').src = '';
     }
+  }
+}
+
+// ─── Transferência de Chat (Admin) ──────────────────────────────────────────
+async function openTransferModal() {
+  if (!currentChat) return;
+  document.getElementById('transferChatModal').style.display = 'flex';
+  document.getElementById('transferSetorSelect').innerHTML = '<option value="">Selecione uma filial primeiro</option>';
+  
+  // Carregar filiais do backend
+  const select = document.getElementById('transferFilialSelect');
+  select.innerHTML = '<option value="">Carregando...</option>';
+  try {
+    const res = await fetch(`${API_URL}/api/admin/filiais`, {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}` }
+    });
+    const filiais = await res.json();
+    window._allTransferFiliais = filiais;
+    select.innerHTML = '<option value="">Selecione uma filial</option>';
+    filiais.forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f.id;
+      opt.textContent = f.name;
+      select.appendChild(opt);
+    });
+  } catch(e) {
+    console.error(e);
+    select.innerHTML = '<option value="">Erro ao carregar</option>';
+  }
+}
+
+function closeTransferModal() {
+  document.getElementById('transferChatModal').style.display = 'none';
+}
+
+async function loadSetoresForTransfer() {
+  const filialId = document.getElementById('transferFilialSelect').value;
+  const select = document.getElementById('transferSetorSelect');
+  if (!filialId) {
+    select.innerHTML = '<option value="">Selecione uma filial primeiro</option>';
+    return;
+  }
+  select.innerHTML = '<option value="">Carregando...</option>';
+  try {
+    const res = await fetch(`${API_URL}/api/admin/setores`, {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}` }
+    });
+    const setores = await res.json();
+    const filtered = setores.filter(s => s.filial_id == filialId);
+    select.innerHTML = '<option value="">Selecione um setor</option>';
+    filtered.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.name;
+      select.appendChild(opt);
+    });
+  } catch(e) {
+    console.error(e);
+    select.innerHTML = '<option value="">Erro ao carregar</option>';
+  }
+}
+
+async function confirmTransferChat() {
+  const filialSelect = document.getElementById('transferFilialSelect');
+  const setorSelect = document.getElementById('transferSetorSelect');
+  const filialId = filialSelect.value;
+  const setorId = setorSelect.value;
+  
+  if (!filialId || !setorId || !currentChat) return;
+  
+  const filialName = filialSelect.options[filialSelect.selectedIndex].text;
+  const setorName = setorSelect.options[setorSelect.selectedIndex].text;
+  
+  try {
+    const res = await fetch(`${API_URL}/api/chat/transfer`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}`
+      },
+      body: JSON.stringify({
+        contact_id: currentChat.id,
+        filial: filialName,
+        setor: setorName
+      })
+    });
+    
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Conversa transferida com sucesso!');
+      closeTransferModal();
+      
+      // Opcional: remover atribuição atual localmente
+      currentChat.assigned_to = null;
+      currentChat.assigned_name = null;
+      
+      const tagStr = `${filialName}:${setorName}`;
+      if (!currentChat.tags) currentChat.tags = [];
+      if (!currentChat.tags.includes(tagStr)) {
+          currentChat.tags.push(tagStr);
+      }
+      
+      updateAttendanceBar(currentChat);
+      updateContactDetails(currentChat);
+      renderChatList(getFilteredContacts());
+    } else {
+      showToast(data.error || 'Erro ao transferir');
+    }
+  } catch(e) {
+    console.error(e);
+    showToast('Erro de conexão ao transferir');
   }
 }
