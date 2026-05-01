@@ -1245,14 +1245,40 @@ function renderTagFilter() {
   }
 }
 
+function parseTimeStr(timeStr) {
+  if (!timeStr) return 0;
+  const parts = timeStr.split(' ');
+  if (parts.length !== 2) return 0;
+  const dateParts = parts[0].split('/');
+  const timeParts = parts[1].split(':');
+  if (dateParts.length !== 2 || timeParts.length !== 2) return 0;
+  
+  const day = parseInt(dateParts[0], 10);
+  const month = parseInt(dateParts[1], 10) - 1;
+  const hours = parseInt(timeParts[0], 10);
+  const mins = parseInt(timeParts[1], 10);
+  
+  const now = new Date();
+  let year = now.getFullYear();
+  
+  // if month is December and now is January, it was likely last year
+  if (month === 11 && now.getMonth() === 0) year--;
+  
+  return new Date(year, month, day, hours, mins).getTime();
+}
+
 function getFilteredContacts() {
-  return CONTACTS.filter(c => {
+  const filtered = CONTACTS.filter(c => {
     if (currentInstance !== 'all' && c.instance !== currentInstance) return false;
     if (currentTab === 'unread' && c.unread === 0) return false;
     if (currentTagFilter !== 'all') {
       if (!c.tags || !c.tags.includes(currentTagFilter)) return false;
     }
     return true;
+  });
+
+  return filtered.sort((a, b) => {
+    return parseTimeStr(b.time) - parseTimeStr(a.time);
   });
 }
 
