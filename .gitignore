@@ -20,3 +20,6 @@ build/
 *.egg
 node_modules/
 .DS_Store
+
+# Diretório de scripts de testes e arquivos não usados pelo sistema
+scripts_de_testes/

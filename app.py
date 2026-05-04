@@ -634,6 +634,11 @@ def manage_filiais():
         return jsonify({'id': nova_filial.id, 'name': nova_filial.name, 'instance': nova_filial.instance}), 201
 
     if user.role == 'user':
+        # Se for para transferência, permite ver todas as filiais
+        if request.args.get('action') == 'transfer':
+            filiais = Filial.query.all()
+            return jsonify([{'id': f.id, 'name': f.name, 'instance': f.instance} for f in filiais])
+            
         if user.filial_id:
             filial = Filial.query.get(user.filial_id)
             if filial:
@@ -733,6 +738,11 @@ def manage_setores():
         return jsonify({'id': novo_setor.id, 'name': novo_setor.name, 'filial_id': novo_setor.filial_id, 'filial_name': novo_setor.filial_name}), 201
 
     if user.role == 'user':
+        # Se for para transferência, permite ver todos os setores
+        if request.args.get('action') == 'transfer':
+            setores = Setor.query.all()
+            return jsonify([{'id': s.id, 'name': s.name, 'filial_id': s.filial_id, 'filial_name': s.filial_name} for s in setores])
+            
         if user.filial_id:
             setores = Setor.query.filter_by(filial_id=user.filial_id).all()
             return jsonify([{'id': s.id, 'name': s.name, 'filial_id': s.filial_id, 'filial_name': s.filial_name} for s in setores])
@@ -1492,6 +1502,13 @@ def webhook():
                 doc_name = m.get('documentMessage', {}).get('fileName', 'Arquivo')
                 text = f"[DOC_REF] {instance}|{msg_id_key}|{doc_name}"
                 print(f"[Doc] Guardando ref de documento: instance={instance} msg_id={msg_id_key}")
+            elif 'locationMessage' in m:
+                lat = m.get('locationMessage', {}).get('degreesLatitude', '')
+                lng = m.get('locationMessage', {}).get('degreesLongitude', '')
+                name = m.get('locationMessage', {}).get('name', '')
+                address = m.get('locationMessage', {}).get('address', '')
+                text = f"[LOCATION_REF] {lat}|{lng}|{name}|{address}"
+                print(f"[Location] Guardando ref de localizacao: instance={instance} msg_id={msg_id_key}")
             else:
                 text = m.get('conversation') or \
                        m.get('extendedTextMessage', {}).get('text') or \
@@ -1758,6 +1775,10 @@ def create_contact():
     
     if not phone or not instance:
         return jsonify({'error': 'Telefone e Instância são obrigatórios'}), 400
+        
+    clean_phone = "".join(filter(str.isdigit, str(phone).strip()))
+    if len(clean_phone) < 12 or len(clean_phone) > 14:
+        return jsonify({'error': 'Formato inválido! Insira DDI + DDD + Número (Ex: 5535999888777)'}), 400
         
     phone = normalize_br_phone(str(phone).strip())
     contact_id = f"c_{phone}_{instance}"
@@ -2032,29 +2053,7 @@ def release_chat(id):
             _s = Setor.query.get(user.setor_id)
             _setor_r = _s.name if _s else None
             
-    tags = list(contact.tags or [])
-    atendente_tag = f"Atendente: {old_name}"
-    if atendente_tag in tags:
-        tags.remove(atendente_tag)
-        
-    if 'BOT' not in tags:
-        tags.append('BOT')
-    
-    if _filial_r and _setor_r:
-        filial_tag = f"{_filial_r}:{_setor_r}"
-    elif _filial_r:
-        filial_tag = _filial_r
-    else:
-        filial_tag = "Sede"
-        
-    # Remover tags antigas no formato "Filial:Setor" ou "filial:sede" (que contêm ':' mas não são Atendente:)
-    # e também a string literal "Sede", pra evitar sujeira.
-    tags = [t for t in tags if not (':' in t and not t.startswith('Atendente:')) and t != 'Sede']
-
-    if filial_tag not in tags:
-        tags.append(filial_tag)
-
-    contact.tags = tags
+    contact.tags = ['BOT']
     flag_modified(contact, 'tags')
     
     db_sql.session.commit()
@@ -2186,10 +2185,10 @@ def chat_transfer():
     if contact.assigned_to and contact.assigned_to != user.id:
         return jsonify({'error': 'Este chat já está sendo atendido por outra pessoa'}), 403
         
-    # Usuários normais só podem transferir para setores de sua própria filial
-    if user.role == 'user':
-        if not user.filial or user.filial != filial:
-            return jsonify({'error': 'Você só pode transferir para a sua própria filial'}), 403
+    # Regra removida: Todos os usuários podem transferir para qualquer filial e setor
+    # if user.role == 'user':
+    #     if not user.filial or user.filial != filial:
+    #         return jsonify({'error': 'Você só pode transferir para a sua própria filial'}), 403
         
     n8n_webhook_url = "https://n8n-n8n.ioms5g.easypanel.host/webhook/chamar"
     
@@ -2206,13 +2205,10 @@ def chat_transfer():
         print(f"Erro ao disparar webhook de transferência n8n: {e}")
         return jsonify({'error': 'Erro ao comunicar com n8n'}), 500
         
-    # Opcional: Atualiza a tag localmente para refletir o novo setor
-    current_tags = list(contact.tags or [])
+    # Atualiza a tag localmente para refletir o novo setor e apaga as antigas
     tag_name = f"{filial}:{setor}"
-    if tag_name not in current_tags:
-        current_tags.append(tag_name)
-        contact.tags = current_tags
-        flag_modified(contact, 'tags')
+    contact.tags = [tag_name]
+    flag_modified(contact, 'tags')
         
     # Liberar o atendimento (remover assigned_to)
     if contact.assigned_to:

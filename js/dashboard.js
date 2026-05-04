@@ -381,6 +381,8 @@ function renderChatList(contacts) {
       preview = '🎥 Vídeo';
     } else if (preview.startsWith('[DOC_REF]')) {
       preview = '📎 Arquivo';
+    } else if (preview.startsWith('[LOCATION_REF]')) {
+      preview = '📍 Localização';
     }
 
     // Tags para mostrar na listagem
@@ -527,7 +529,22 @@ function renderMessages(messages) {
     let messageContent = msg.text ? String(msg.text) : "";
     const authToken = localStorage.getItem('wp_crm_token');
     
-    if (messageContent.startsWith('[IMAGE_REF] ')) {
+    if (messageContent.startsWith('[LOCATION_REF] ')) {
+        const ref = messageContent.replace('[LOCATION_REF] ', '');
+        const parts = ref.split('|');
+        const lat = parts[0];
+        const lng = parts[1];
+        const name = parts[2] || 'Localização';
+        const address = parts[3] || '';
+        const mapsUrl = `https://maps.google.com/?q=${lat},${lng}`;
+        messageContent = `<a href="${mapsUrl}" target="_blank" class="msg-doc" style="display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; text-decoration: none; color: inherit;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+            <div style="display:flex; flex-direction:column; text-align:left;">
+                <strong style="font-size:14px; max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(name)}</strong>
+                <span style="font-size:11px; opacity:0.8; max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(address)}</span>
+            </div>
+        </a>`;
+    } else if (messageContent.startsWith('[IMAGE_REF] ')) {
         const ref = messageContent.replace('[IMAGE_REF] ', '');
         const [imgInstance, imgMsgId] = ref.split('\n')[0].split('|');
         const caption = ref.split('\n')[1] || '';
@@ -1770,6 +1787,11 @@ function startNewChat() {
 
   if (!number || !instance) {
     showToast('Preencha número e instância');
+    return;
+  }
+
+  if (number.length < 12 || number.length > 14) {
+    showToast('Formato inválido! Insira DDI + DDD + Número (Ex: 5535999888777)');
     return;
   }
 
