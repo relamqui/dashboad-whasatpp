@@ -212,6 +212,7 @@ function initSocket(token) {
 let _pendingAudioIds = new Set();
 let _pendingImageIds = new Set();
 let _pendingVideoIds = new Set();
+let _pendingDocIds = new Set();
 
 function handleIncomingWebhook(data) {
   console.log('Evento WhatsApp recebido:', data.event);
@@ -219,11 +220,12 @@ function handleIncomingWebhook(data) {
   if (data.event === 'messages.upsert' || data.event === 'send.message') {
     // Skip outgoing media events we already rendered locally
     const msgId = data.data?.key?.id;
-    if (msgId && (_pendingAudioIds.has(msgId) || _pendingImageIds.has(msgId) || _pendingVideoIds.has(msgId))) {
+    if (msgId && (_pendingAudioIds.has(msgId) || _pendingImageIds.has(msgId) || _pendingVideoIds.has(msgId) || _pendingDocIds.has(msgId))) {
       console.log('Skipping duplicate socket event for sent media:', msgId);
       _pendingAudioIds.delete(msgId);
       _pendingImageIds.delete(msgId);
       _pendingVideoIds.delete(msgId);
+      _pendingDocIds.delete(msgId);
       return;
     }
     const msg = data.data;
@@ -267,6 +269,13 @@ function handleIncomingWebhook(data) {
             const caption = msg.message.videoMessage.caption || '';
             text = `[VIDEO_REF] ${inst}|${msgId}`;
             if (caption) text += `\n${caption}`;
+        }
+        
+        if (msg.message?.documentMessage) {
+            const inst = data._instance || data.instance || 'unknown';
+            const msgId = key.id || '';
+            const docName = msg.message.documentMessage.fileName || 'Arquivo';
+            text = `[DOC_REF] ${inst}|${msgId}|${docName}`;
         }
     }
     
@@ -379,7 +388,7 @@ function renderChatList(contacts) {
       preview = '🖼️ Imagem';
     } else if (preview.startsWith('[VIDEO_REF]')) {
       preview = '🎥 Vídeo';
-    } else if (preview.startsWith('[DOC_REF]')) {
+    } else if (preview.startsWith('[DOC_REF]') || preview.startsWith('[DOCUMENT_REF]')) {
       preview = '📎 Arquivo';
     } else if (preview.startsWith('[LOCATION_REF]')) {
       preview = '📍 Localização';
@@ -573,6 +582,13 @@ function renderMessages(messages) {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
             <span>${escapeHtml(docName)}</span>
         </a>`;
+    } else if (messageContent.startsWith('[DOCUMENT_REF] ')) {
+        // Fallback para documentos enviados com formato antigo (sem instance|msg_id)
+        const docName = messageContent.replace('[DOCUMENT_REF] ', '');
+        messageContent = `<div class="msg-doc" style="display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; color: inherit;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
+            <span>${escapeHtml(docName)}</span>
+        </div>`;
     } else if (messageContent.startsWith('[IMAGE_LOCAL] ')) {
         const localSrc = messageContent.replace('[IMAGE_LOCAL] ', '');
         messageContent = `<img src="${localSrc}" class="msg-image" alt="Imagem" onclick="openLightbox(this.src)" />`;
@@ -1487,7 +1503,20 @@ async function sendDocumentMessage(file) {
     const time = `${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
     
     const tempId = 'doc_temp_' + Date.now();
-    const tempText = `📎 Arquivo: ${file.name}`;
+    
+    // Resolve instância antes para poder montar o DOC_REF temporário
+    let targetInstance = currentChat.instance;
+    if (targetInstance.startsWith('inst')) {
+      const user = JSON.parse(localStorage.getItem('wp_crm_user'));
+      if (user.instances && user.instances.length > 0) {
+        targetInstance = user.instances[0];
+      } else {
+        showToast('Nenhuma instância vinculada.');
+        return;
+      }
+    }
+    
+    const tempText = `[DOC_REF] ${targetInstance}|${tempId}|${file.name}`;
     const newMsg = { id: tempId, text: tempText, type: 'out', time };
     if (!currentChat.messages) currentChat.messages = [];
     currentChat.messages.push(newMsg);
@@ -1497,16 +1526,6 @@ async function sendDocumentMessage(file) {
     renderChatList(getFilteredContacts());
     
     try {
-      let targetInstance = currentChat.instance;
-      if (targetInstance.startsWith('inst')) {
-        const user = JSON.parse(localStorage.getItem('wp_crm_user'));
-        if (user.instances && user.instances.length > 0) {
-          targetInstance = user.instances[0];
-        } else {
-          throw new Error('Nenhuma instância vinculada.');
-        }
-      }
-      
       const cleanNumber = currentChat.phone.replace(/\D/g, '');
       
       const response = await fetch(`${API_URL}/api/whatsapp/send-document`, {
@@ -1530,6 +1549,10 @@ async function sendDocumentMessage(file) {
       const realId = data.msg_id || data.key?.id;
       if (realId) {
         newMsg.id = realId;
+        newMsg.text = `[DOC_REF] ${targetInstance}|${realId}|${file.name}`;
+        _pendingDocIds.add(realId);
+        // Re-render para mostrar com link de download correto
+        renderMessages(currentChat.messages);
       }
       
       showToast('Arquivo enviado!');

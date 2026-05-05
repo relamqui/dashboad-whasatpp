@@ -1319,7 +1319,7 @@ def send_document():
         res_data = res.json()
 
         msg_id = res_data.get('key', {}).get('id') or res_data.get('messageId') or f"doc_out_{int(now.timestamp())}"
-        text = f"[DOCUMENT_REF] {doc_name}"
+        text = f"[DOC_REF] {inst}|{msg_id}|{doc_name}"
 
         contact_id = f"c_{number}_{inst}"
 
