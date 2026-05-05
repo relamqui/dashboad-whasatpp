@@ -203,6 +203,29 @@ function initSocket(token) {
         console.warn('[Socket] Contato não encontrado para atualizar tags:', data.id);
       }
     });
+
+    socket.on('chat_avatar_updated', (data) => {
+      console.log('[Socket] chat_avatar_updated recebido:', data);
+      const contact = CONTACTS.find(c => c.id === data.id);
+      if (contact) {
+        contact.avatar = data.avatar;
+        renderChatList(getFilteredContacts());
+        
+        // Atualiza a foto no header do chat se estiver aberto
+        if (currentChat && currentChat.id === data.id) {
+          currentChat.avatar = data.avatar;
+          const avatarEl = document.getElementById('currentChatAvatar');
+          if (avatarEl) {
+            if (data.avatar.startsWith('http')) {
+              avatarEl.innerHTML = `<img src="${data.avatar}" alt="Avatar">`;
+            } else {
+              avatarEl.innerHTML = data.avatar;
+            }
+          }
+        }
+      }
+    });
+
   } else {
     console.warn('Socket.io no encontrado. Rodando em modo offline/mock.');
   }

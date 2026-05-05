@@ -92,7 +92,7 @@ class Contact(db_sql.Model):
     id = db_sql.Column(db_sql.String(150), primary_key=True) # c_phone_instance
     name = db_sql.Column(db_sql.String(100), nullable=False)
     phone = db_sql.Column(db_sql.String(30), nullable=False) # No longer unique
-    avatar = db_sql.Column(db_sql.String(20), nullable=True)
+    avatar = db_sql.Column(db_sql.Text, nullable=True)
     instance = db_sql.Column(db_sql.String(100), nullable=True)
     tags = db_sql.Column(db_sql.JSON, default=['Novo Lead'])
     last_msg = db_sql.Column(db_sql.Text, nullable=True)
@@ -1464,6 +1464,39 @@ def bot_message_webhook():
         print(f"Erro bot-message: {e}")
         return jsonify({'error': str(e)}), 500
 
+import threading
+
+def fetch_and_update_avatar_async(contact_id, phone, instance):
+    def _fetch():
+        try:
+            url = f"{os.getenv('EVOLUTION_API_URL')}/chat/fetchProfilePictureUrl/{instance}"
+            headers = {'apikey': os.getenv('EVOLUTION_API_KEY'), 'Content-Type': 'application/json'}
+            payload = {"number": phone}
+            res = requests.post(url, json=payload, headers=headers, timeout=10)
+            if res.status_code == 200:
+                data = res.json()
+                picture_url = data.get('profilePictureUrl')
+                if picture_url:
+                    with app.app_context():
+                        contact = Contact.query.get(contact_id)
+                        if contact:
+                            contact.avatar = picture_url
+                            db_sql.session.commit()
+                            
+                            # Emitir socket para atualizar o frontend
+                            socketio.emit('chat_avatar_updated', {
+                                'id': contact_id,
+                                'avatar': picture_url
+                            }, room=f'instance_{instance}')
+                            socketio.emit('chat_avatar_updated', {
+                                'id': contact_id,
+                                'avatar': picture_url
+                            }, room='admin')
+        except Exception as e:
+            print(f"[Avatar] Erro ao buscar foto para {phone}: {e}")
+
+    threading.Thread(target=_fetch).start()
+
 @app.route('/api/webhooks/evolution', methods=['POST'])
 def webhook():
     try:
@@ -1544,11 +1577,18 @@ def webhook():
                     unread=0 if fromMe else 1
                 )
                 db_sql.session.add(contact)
+                db_sql.session.flush()
+                # Chama a busca de foto
+                fetch_and_update_avatar_async(contact_id, phone, instance)
             else:
                 contact.last_msg = text
                 contact.last_msg_time = time_str
                 if not fromMe:
                     contact.unread = (contact.unread or 0) + 1
+                    
+                # Se não tem foto real (é só uma letra ou '?'), tenta buscar
+                if not contact.avatar or len(contact.avatar) <= 2 or not contact.avatar.startswith('http'):
+                    fetch_and_update_avatar_async(contact_id, phone, instance)
             
             db_sql.session.flush()
 
