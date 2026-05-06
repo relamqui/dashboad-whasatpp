@@ -2524,6 +2524,54 @@ def stream_media(media_type):
         print(f"Erro stream_{media_type}: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/debug/test-alerta-espera', methods=['POST'])
+def test_alerta_espera():
+    """Rota de teste: simula um cliente esperando ha X minutos.
+    Body JSON: { "numero": "5535999...", "minutos": 25, "atendente": "Teste" }
+    Isso forca o monitor a disparar na proxima varredura (ate 60s).
+    """
+    data = request.json or {}
+    numero = data.get('numero', '5500000000000')
+    minutos = int(data.get('minutos', 21))
+    atendente_nome = data.get('atendente', 'Atendente Teste')
+
+    # Calcula o timestamp simulado (agora - X minutos)
+    desde = get_now() - datetime.timedelta(minutes=minutos)
+    desde_iso = desde.isoformat()
+
+    try:
+        reg = AtendimentoChat.query.filter_by(numero=numero).first()
+        if reg:
+            reg.status = 'atendente'
+            reg.atendente = atendente_nome
+            reg.atendente_desde = desde_iso
+            reg.alerta_20min_enviado = False
+            reg.alerta_40min_enviado = False
+            reg.registro_time_chat = desde_iso
+        else:
+            reg = AtendimentoChat(
+                numero=numero,
+                status='atendente',
+                atendente=atendente_nome,
+                atendente_desde=desde_iso,
+                registro_time_chat=desde_iso,
+                alerta_20min_enviado=False,
+                alerta_40min_enviado=False
+            )
+            db_sql.session.add(reg)
+        db_sql.session.commit()
+        return jsonify({
+            'ok': True,
+            'numero': numero,
+            'atendente': atendente_nome,
+            'minutos_simulados': minutos,
+            'atendente_desde': desde_iso,
+            'aviso': 'O monitor verifica a cada 60s. Aguarde ate 1 minuto e verifique os webhooks no N8N.'
+        }), 200
+    except Exception as e:
+        db_sql.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/debug/last-webhook', methods=['GET', 'POST'])
 def debug_webhook():
     """Dev-only: POST salva payload, GET retorna o ultimo."""
