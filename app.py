@@ -2136,7 +2136,17 @@ def assign_chat(id):
     contact.assigned_name = user.name
     
     atendente_tag = f"Atendente: {user.name}"
-    contact.tags = [atendente_tag]
+    # Preserva tags de Filial:Setor, remove BOT e tag de atendente anterior
+    current_tags = list(contact.tags or [])
+    new_tags = [
+        t for t in current_tags
+        if isinstance(t, str)
+        and not t.strip().lower().startswith('atendente:')
+        and t.strip().upper() != 'BOT'
+    ]
+    if atendente_tag not in new_tags:
+        new_tags.append(atendente_tag)
+    contact.tags = new_tags
     flag_modified(contact, 'tags')
     
     db_sql.session.commit()
@@ -2253,20 +2263,18 @@ def release_chat(id):
             _s = Setor.query.get(user.setor_id)
             _setor_r = _s.name if _s else None
             
-    # Preserva a tag de Filial:Setor do atendimento finalizado
-    # para que o cliente retorne à fila correta.
-    # Remove apenas a tag do atendente (Atendente:NomeAtendente) e mantém BOT + Filial:Setor
+    # Ao finalizar: remove tag do atendente, mantém Filial:Setor, adiciona BOT
     current_tags = list(contact.tags or [])
     
-    # Remove tags de atendente (ex: "Atendente:Fulano")
+    # Remove tags de atendente (ex: "Atendente: Fulano") — case-insensitive com strip
     preserved_tags = [
         t for t in current_tags
-        if not (isinstance(t, str) and t.lower().startswith('atendente:'))
+        if not (isinstance(t, str) and t.strip().lower().startswith('atendente:'))
     ]
     
-    # Garante que BOT está presente
-    if 'BOT' not in preserved_tags:
-        preserved_tags.insert(0, 'BOT')
+    # Remove BOT caso já exista (para não duplicar) e adiciona no início
+    preserved_tags = [t for t in preserved_tags if t.strip().upper() != 'BOT']
+    preserved_tags.insert(0, 'BOT')
     
     contact.tags = preserved_tags
     flag_modified(contact, 'tags')
