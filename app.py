@@ -124,8 +124,8 @@ class AtendimentoChat(db_sql.Model):
     ultimo_setor = db_sql.Column(db_sql.String(255), nullable=True)
     ultimo_atendente = db_sql.Column(db_sql.String(255), nullable=True)
     # Campos para controle de alertas de tempo de espera
-    alerta_20min_enviado = db_sql.Column(db_sql.Boolean, default=False, nullable=False, server_default='0')
-    alerta_40min_enviado = db_sql.Column(db_sql.Boolean, default=False, nullable=False, server_default='0')
+    alerta_20min_enviado = db_sql.Column(db_sql.Boolean, default=False, nullable=False, server_default='false')
+    alerta_40min_enviado = db_sql.Column(db_sql.Boolean, default=False, nullable=False, server_default='false')
     # Timestamp ISO de quando o status mudou para 'atendente' (início da espera)
     atendente_desde = db_sql.Column(db_sql.Text, nullable=True)
 
@@ -254,18 +254,26 @@ def migrate_to_sql():
             db_sql.session.commit()
             print("Migração concluída.")
 
-        # Migração dos campos de alerta de tempo de espera
+        # Migração dos campos de alerta de tempo de espera (compatível com SQLite e PostgreSQL)
         for col_def in [
-            "ALTER TABLE atendimentos_chat ADD COLUMN alerta_20min_enviado BOOLEAN NOT NULL DEFAULT 0",
-            "ALTER TABLE atendimentos_chat ADD COLUMN alerta_40min_enviado BOOLEAN NOT NULL DEFAULT 0",
-            "ALTER TABLE atendimentos_chat ADD COLUMN atendente_desde TEXT",
+            "ALTER TABLE atendimentos_chat ADD COLUMN IF NOT EXISTS alerta_20min_enviado BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE atendimentos_chat ADD COLUMN IF NOT EXISTS alerta_40min_enviado BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE atendimentos_chat ADD COLUMN IF NOT EXISTS atendente_desde TEXT",
         ]:
             try:
                 db_sql.session.execute(db_sql.text(col_def))
                 db_sql.session.commit()
-                print(f"[MIGRATE] Coluna adicionada: {col_def.split('ADD COLUMN ')[1].split(' ')[0]}")
-            except Exception:
+                print(f"[MIGRATE] Coluna adicionada/verificada: {col_def.split('IF NOT EXISTS ')[1].split(' ')[0]}")
+            except Exception as e_col:
                 db_sql.session.rollback()
+                # SQLite não suporta IF NOT EXISTS, tenta sem ele
+                try:
+                    col_def_sqlite = col_def.replace('IF NOT EXISTS ', '').replace('DEFAULT FALSE', 'DEFAULT 0')
+                    db_sql.session.execute(db_sql.text(col_def_sqlite))
+                    db_sql.session.commit()
+                    print(f"[MIGRATE] Coluna adicionada (SQLite fallback): {col_def_sqlite.split('ADD COLUMN ')[1].split(' ')[0]}")
+                except Exception:
+                    db_sql.session.rollback()  # Coluna já existe ou outro erro ignorado
         
         # Garantir que existe pelo menos um ADMIN se o banco estiver vazio
         if User.query.filter_by(role='admin').first() is None:
