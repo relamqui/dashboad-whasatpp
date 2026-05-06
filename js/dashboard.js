@@ -1237,10 +1237,14 @@ function addInstance() {
 
 // ─── Filtering ────────────────────────────────────────────────────────────────
 function filterChats(query) {
-  const filtered = CONTACTS.filter(c =>
-    c.name.toLowerCase().includes(query.toLowerCase()) ||
-    c.lastMsg.toLowerCase().includes(query.toLowerCase())
-  );
+  const q = query.toLowerCase().trim();
+  const qDigits = q.replace(/\D/g, ''); // somente dígitos para busca por número
+  const filtered = CONTACTS.filter(c => {
+    const nameMatch = c.name.toLowerCase().includes(q);
+    const msgMatch  = (c.lastMsg || '').toLowerCase().includes(q);
+    const phoneMatch = qDigits.length > 0 && (c.phone || '').replace(/\D/g, '').includes(qDigits);
+    return nameMatch || msgMatch || phoneMatch;
+  });
   renderChatList(filtered);
 }
 
