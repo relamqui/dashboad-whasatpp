@@ -1521,9 +1521,9 @@ def wait_time_monitor_loop():
                         nome_cliente = contact_obj.name if contact_obj else reg.numero
                         instance_obj = contact_obj.instance if contact_obj else None
 
-                        # Busca filial e setor a partir do atendente
+                        # Busca filial e setor: tenta pelo atendente primeiro, depois pelo ultimo_setor
                         filial_nome = None
-                        setor_nome = None
+                        setor_nome = reg.ultimo_setor  # fallback: setor de destino da transferência
                         if reg.atendente:
                             atend_user = User.query.filter_by(name=reg.atendente).first()
                             if atend_user:
@@ -1541,7 +1541,7 @@ def wait_time_monitor_loop():
                         payload_base = {
                             "numero": reg.numero,
                             "nome_cliente": nome_cliente,
-                            "atendente": reg.atendente or "Sem atendente",
+                            "atendente": reg.atendente or "Aguardando atendente",
                             "filial": filial_nome,
                             "setor": setor_nome,
                             "instancia": instance_obj,
@@ -2446,16 +2446,19 @@ def chat_transfer():
     
     db_sql.session.commit()
 
-    # Resetar alertas de espera ao transferir
+    # Ao transferir: reinicia o timer de espera (contagem começa do zero a partir da transferência)
     try:
+        agora_tr_iso = get_now().isoformat()
         atend_chat_tr = AtendimentoChat.query.filter_by(numero=contact.phone).first()
         if atend_chat_tr:
-            atend_chat_tr.status = 'bot'
-            atend_chat_tr.atendente_desde = None
+            atend_chat_tr.status = 'atendente'      # mantém 'atendente' para o monitor rastrear
+            atend_chat_tr.atendente = None           # sem atendente fixo (aguardando novo)
+            atend_chat_tr.atendente_desde = agora_tr_iso  # timer reinicia agora
             atend_chat_tr.alerta_20min_enviado = False
             atend_chat_tr.alerta_40min_enviado = False
+            atend_chat_tr.ultimo_setor = setor       # registra setor de destino
             db_sql.session.commit()
-            print(f"[TRANSFER] Alertas resetados para {contact.phone}")
+            print(f"[TRANSFER] Timer de espera reiniciado para {contact.phone} → {filial}/{setor}")
     except Exception as e_tr:
         db_sql.session.rollback()
         print(f"Erro ao resetar alertas na transferência: {e_tr}")
