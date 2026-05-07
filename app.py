@@ -1459,17 +1459,18 @@ def bot_message_webhook():
             
         db_sql.session.flush()
 
-        # Save Message
-        new_msg = Message(
-            id=msg_id,
-            contact_id=contact_id,
-            text=text,
-            type='out',
-            time=time_str,
-            timestamp=int(now.timestamp()),
-            instance=inst
-        )
-        db_sql.session.add(new_msg)
+        # Save Message (com verificação de duplicata)
+        if not Message.query.get(msg_id):
+            new_msg = Message(
+                id=msg_id,
+                contact_id=contact_id,
+                text=text,
+                type='out',
+                time=time_str,
+                timestamp=int(now.timestamp()),
+                instance=inst
+            )
+            db_sql.session.add(new_msg)
         
         db_sql.session.commit()
         

@@ -117,7 +117,30 @@ async function loadContacts() {
         });
       }
       
+      // ── Mesclar com contatos existentes, preservando mensagens carregadas ──
+      const existingMap = new Map(CONTACTS.map(c => [c.id, c]));
+      contacts.forEach(c => {
+        const old = existingMap.get(c.id);
+        if (old) {
+          // Preservar array de mensagens já carregado (não vem do servidor)
+          if (old.messages && old.messages.length > 0) {
+            c.messages = old.messages;
+          }
+        }
+      });
       CONTACTS = contacts;
+      
+      // ── Manter referência do currentChat sincronizada ──
+      if (currentChat) {
+        const updated = CONTACTS.find(c => c.id === currentChat.id);
+        if (updated) {
+          // Preservar mensagens do chat aberto no novo objeto
+          if (currentChat.messages && currentChat.messages.length > 0 && (!updated.messages || updated.messages.length === 0)) {
+            updated.messages = currentChat.messages;
+          }
+          currentChat = updated;
+        }
+      }
     }
   } catch (e) {
     console.error('Erro ao carregar contatos:', e);
@@ -319,7 +342,7 @@ function handleIncomingWebhook(data) {
         console.log('[Socket] Contato novo ignorado (filtro de filial/setor):', phone, instName);
         return;
       }
-      const instName = data.instance || data._instance || 'unknown';
+      // instName já declarado acima (linha 308), reutilizar
       contact = {
         id: 'c_' + phone + '_' + instName,
         name: phone,
