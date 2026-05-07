@@ -364,18 +364,19 @@ function handleIncomingWebhook(data) {
 
     const newMsg = { id: key.id, text, type, time };
     
+    // Ensure messages array exists
+    if (!contact.messages) contact.messages = [];
+    
     // Check for duplicates before pushing
     let isDuplicate = false;
-    if (contact.messages) {
-      if (contact.messages.find(m => m.id === newMsg.id)) {
-        isDuplicate = true;
-      } else {
-        contact.messages.push(newMsg);
-      }
+    if (contact.messages.find(m => m.id === newMsg.id)) {
+      isDuplicate = true;
+    } else {
+      contact.messages.push(newMsg);
     }
 
     // Se for o chat aberto, renderiza
-    if (!isDuplicate && currentChat && (currentChat.phone === phone || currentChat.id === contact.id)) {
+    if (!isDuplicate && currentChat && currentChat.id === contact.id) {
       renderMessages(currentChat.messages);
       
       // Scroll to bottom when a new message arrives
@@ -538,7 +539,12 @@ async function openChat(id) {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (res.ok) {
-      contact.messages = await res.json();
+      const apiMessages = await res.json();
+      // Merge: keep any socket-received messages not yet in API response
+      const existingMessages = contact.messages || [];
+      const apiIdSet = new Set(apiMessages.map(m => m.id));
+      const socketOnly = existingMessages.filter(m => m.id && !apiIdSet.has(m.id));
+      contact.messages = apiMessages.concat(socketOnly);
     }
   } catch (e) {
     console.error('Erro ao carregar mensagens:', e);

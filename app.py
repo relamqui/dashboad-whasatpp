@@ -1232,7 +1232,9 @@ def send_image():
         res_data = res.json()
 
         msg_id = res_data.get('key', {}).get('id') or res_data.get('messageId') or f"img_out_{int(now.timestamp())}"
-        text = f"[IMAGE_REF] {caption}"
+        text = f"[IMAGE_REF] {inst}|{msg_id}"
+        if caption:
+            text += f"\n{caption}"
 
         contact_id = f"c_{number}_{inst}"
 
@@ -1294,7 +1296,9 @@ def send_video():
         res_data = res.json()
 
         msg_id = res_data.get('key', {}).get('id') or res_data.get('messageId') or f"vid_out_{int(now.timestamp())}"
-        text = f"[VIDEO_REF] {caption}"
+        text = f"[VIDEO_REF] {inst}|{msg_id}"
+        if caption:
+            text += f"\n{caption}"
 
         contact_id = f"c_{number}_{inst}"
 
