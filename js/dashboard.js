@@ -1421,6 +1421,20 @@ async function sendLocationMessage() {
       const user = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
       const nomeAtendente = user.name || 'Atendente';
       
+      // Optimistic Update: Adiciona localmente na tela na mesma hora
+      const now = new Date();
+      const timeStr = `${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+      const tempText = `[LOCATION_REF] ${lat}|${lng}|Localização de ${nomeAtendente}|Enviado via CRM`;
+      const tempId = 'loc_temp_' + Date.now();
+      
+      if (!currentChat.messages) currentChat.messages = [];
+      currentChat.messages.push({ id: tempId, text: tempText, type: 'out', time: timeStr });
+      currentChat.lastMsg = '📍 Localização';
+      currentChat.time = timeStr;
+      
+      renderMessages(currentChat.messages);
+      renderChatList(getFilteredContacts());
+      
       try {
         const res = await fetch(`${API_URL}/api/whatsapp/send-location`, {
           method: 'POST',

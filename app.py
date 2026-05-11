@@ -1447,20 +1447,17 @@ def send_location():
         contact.last_msg_time = time_str
         db_sql.session.commit()
 
-        # Emitir o evento via socket para atualizar o chat aberto do remetente
-        socketio.emit('whatsapp_event', {
-            'contact_id': contact_id,
-            'message': {
-                'id': msg_id,
-                'text': text,
-                'type': 'out',
-                'time': time_str,
-                'timestamp': int(now.timestamp())
+        fake_event = {
+            'event': 'send.message',
+            'instance': inst,
+            'data': {
+                'key': {'remoteJid': f"{number}@s.whatsapp.net", 'fromMe': True, 'id': msg_id},
+                'message': {'locationMessage': {}}
             },
-            'last_msg': contact.last_msg,
-            'last_msg_time': contact.last_msg_time,
-            'unread': contact.unread
-        }, room=f"instance_{inst}")
+            '_processed_text': text
+        }
+        socketio.emit('whatsapp_event', fake_event, room=f'instance_{inst}')
+        socketio.emit('whatsapp_event', fake_event, room='admin')
 
         return jsonify({'ok': True, 'msg_id': msg_id, 'key': res_data.get('key', {})})
     except Exception as e:
