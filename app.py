@@ -2463,21 +2463,6 @@ def chat_transfer():
     #     if not user.filial or user.filial != filial:
     #         return jsonify({'error': 'Você só pode transferir para a sua própria filial'}), 403
         
-    n8n_webhook_url = "https://n8n-n8n.ioms5g.easypanel.host/webhook/chamar"
-    
-    payload = {
-        "numero": contact.phone,
-        "filial": filial,
-        "setor": setor
-    }
-    
-    try:
-        res = requests.post(n8n_webhook_url, json=payload, timeout=10)
-        res.raise_for_status()
-    except Exception as e:
-        print(f"Erro ao disparar webhook de transferência n8n: {e}")
-        return jsonify({'error': 'Erro ao comunicar com n8n'}), 500
-        
     # Atualiza as tags para refletir o novo setor de destino
     # MANTÉM a tag do setor de origem (do usuário que fez a transferência)
     # para que o setor de origem ainda possa visualizar/acompanhar o chat
@@ -2527,6 +2512,22 @@ def chat_transfer():
     except Exception as e_tr:
         db_sql.session.rollback()
         print(f"Erro ao resetar alertas na transferência: {e_tr}")
+
+    n8n_webhook_url = "https://n8n-n8n.ioms5g.easypanel.host/webhook/chamar"
+    
+    payload = {
+        "numero": contact.phone,
+        "filial": filial,
+        "setor": setor
+    }
+    
+    # Dispara o webhook em background ou após o commit, para que o N8N leia o banco já atualizado
+    try:
+        res = requests.post(n8n_webhook_url, json=payload, timeout=10)
+        res.raise_for_status()
+    except Exception as e:
+        print(f"Erro ao disparar webhook de transferência n8n: {e}")
+        return jsonify({'error': 'Erro ao comunicar com n8n (mas chat foi transferido)'}), 500
     
     # Emite evento para os clientes atualizarem
     socketio.emit('chat_tags_updated', {

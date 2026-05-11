@@ -2108,6 +2108,10 @@ async function confirmTransferChat() {
       
       const tagStr = `${filialName}:${setorName}`;
       if (!currentChat.tags) currentChat.tags = [];
+      
+      // Remover tag Atendente localmente para refletir logo a interface
+      currentChat.tags = currentChat.tags.filter(t => typeof t === 'string' && !t.toLowerCase().startsWith('atendente:'));
+      
       if (!currentChat.tags.includes(tagStr)) {
           currentChat.tags.push(tagStr);
       }
