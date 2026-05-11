@@ -411,6 +411,18 @@ function renderChatList(contacts) {
   const list = document.getElementById('chatList');
   list.innerHTML = '';
 
+  const badge = document.getElementById('chatBadge');
+  if (badge) {
+    // Calcula a quantidade total de chats (do usuário) que possuem mensagens não lidas
+    const totalUnreadChats = CONTACTS.reduce((sum, c) => sum + (c.unread > 0 ? 1 : 0), 0);
+    if (totalUnreadChats > 0) {
+      badge.textContent = totalUnreadChats;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
   if (!contacts.length) {
     list.innerHTML = `<div style="padding:32px;text-align:center;color:var(--text-muted);font-size:13px;">Nenhuma conversa encontrada</div>`;
     return;
