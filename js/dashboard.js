@@ -222,6 +222,31 @@ function initSocket(token) {
         renderTagFilter();
         console.log('[Socket] Tags atualizadas para:', contact.id, data.tags);
       } else {
+        // Contato não está na lista local — pode ser um chat transferido para mim
+        // Verifica se alguma das novas tags é do meu setor para forçar reload
+        const userData = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
+        if (userData.role !== 'admin' && userData.filial && userData.setor) {
+          const myTag = `${userData.filial}:${userData.setor}`;
+          if (data.tags && data.tags.includes(myTag)) {
+            console.log('[Socket] Chat transferido para meu setor detectado, recarregando contatos:', data.id);
+            loadContacts().then(() => {
+              renderTagFilter();
+              renderChatList(getFilteredContacts());
+            });
+            return;
+          }
+        } else if (userData.role === 'gestor' && userData.filial) {
+          const newTags = data.tags || [];
+          const hasMyFilial = newTags.some(t => typeof t === 'string' && t.includes(':') && !t.toLowerCase().startsWith('atendente:') && t.split(':')[0] === userData.filial);
+          if (hasMyFilial) {
+            console.log('[Socket] Chat transferido para minha filial (gestor), recarregando:', data.id);
+            loadContacts().then(() => {
+              renderTagFilter();
+              renderChatList(getFilteredContacts());
+            });
+            return;
+          }
+        }
         console.warn('[Socket] Contato não encontrado para atualizar tags:', data.id);
       }
     });
@@ -1842,6 +1867,28 @@ function handleChatAssignment(data) {
       updateContactDetails(currentChat);
     }
     renderChatList(getFilteredContacts());
+  } else {
+    // Contato não está na lista local — pode ser um chat transferido para mim
+    // Verifica se as tags indicam que é do meu setor/filial
+    const userData = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
+    const tags = data.tags || [];
+    let shouldReload = false;
+    
+    if (userData.role === 'user' && userData.filial && userData.setor) {
+      const myTag = `${userData.filial}:${userData.setor}`;
+      if (tags.includes(myTag)) shouldReload = true;
+    } else if (userData.role === 'gestor' && userData.filial) {
+      const hasMyFilial = tags.some(t => typeof t === 'string' && t.includes(':') && !t.toLowerCase().startsWith('atendente:') && t.split(':')[0] === userData.filial);
+      if (hasMyFilial) shouldReload = true;
+    }
+    
+    if (shouldReload) {
+      console.log('[Socket] Chat transferido detectado via assignment, recarregando contatos:', data.contact_id);
+      loadContacts().then(() => {
+        renderTagFilter();
+        renderChatList(getFilteredContacts());
+      });
+    }
   }
 }
 
