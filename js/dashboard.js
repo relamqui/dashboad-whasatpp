@@ -2572,8 +2572,23 @@ window.showNewChatWithNumber = async function(number) {
     }
     
     await showNewChat();
-    const phoneInput = document.getElementById('newChatPhone');
-    if (phoneInput) {
-        phoneInput.value = cleanNumber;
+    const numberInput = document.getElementById('newChatNumber');
+    if (numberInput) {
+        numberInput.value = cleanNumber;
+    }
+
+    // Pre-seleciona a instancia atual
+    if (currentChat) {
+        const currentInstance = currentChat.instanceName || currentChat.instance;
+        const instanceSelect = document.getElementById('newChatInstance');
+        if (instanceSelect && currentInstance) {
+            for (const opt of instanceSelect.options) {
+                if (opt.value === currentInstance) {
+                    opt.selected = true;
+                    break;
+                }
+            }
+        }
     }
 };
+
