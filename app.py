@@ -1870,18 +1870,33 @@ def webhook():
                 contact_data = m.get('contactMessage', {})
                 display_name = contact_data.get('displayName', 'Contato')
                 vcard = contact_data.get('vcard', '')
-                # Extrai telefone do vCard (linha TEL:)
+                
                 contact_phone = ''
                 for line in vcard.split('\n'):
-                    if line.strip().upper().startswith('TEL'):
-                        contact_phone = line.split(':')[-1].strip().replace('\r', '')
+                    if 'waid=' in line:
+                        contact_phone = line.split('waid=')[1].split(':')[0]
                         break
+                    elif line.strip().upper().startswith('TEL'):
+                        contact_phone = line.split(':')[-1].strip().replace('\r', '')
+                
                 text = f"[CONTACT_REF] {display_name}|{contact_phone}|{vcard}"
                 print(f"[Contact] Guardando ref de contato: name={display_name} phone={contact_phone}")
+                
             elif 'contactsArrayMessage' in m:
                 contacts_list = m.get('contactsArrayMessage', {}).get('contacts', [])
                 names = ', '.join([c.get('displayName', '?') for c in contacts_list])
-                text = f"[CONTACT_REF] {names}||" + str(contacts_list)
+                
+                contact_phone = ''
+                if contacts_list:
+                    vcard = contacts_list[0].get('vcard', '')
+                    for line in vcard.split('\n'):
+                        if 'waid=' in line:
+                            contact_phone = line.split('waid=')[1].split(':')[0]
+                            break
+                        elif line.strip().upper().startswith('TEL'):
+                            contact_phone = line.split(':')[-1].strip().replace('\r', '')
+                            
+                text = f"[CONTACT_REF] {names}|{contact_phone}|{str(contacts_list)}"
                 print(f"[Contact] Guardando array de contatos: {names}")
             else:
                 text = m.get('conversation') or \

@@ -354,9 +354,11 @@ function handleIncomingWebhook(data) {
             const vcard = cd.vcard || '';
             let contactPhone = '';
             for (const line of vcard.split('\n')) {
-                if (line.trim().toUpperCase().startsWith('TEL')) {
-                    contactPhone = line.split(':').pop().trim().replace(/\r/g, '');
+                if (line.includes('waid=')) {
+                    contactPhone = line.split('waid=')[1].split(':')[0];
                     break;
+                } else if (line.trim().toUpperCase().startsWith('TEL')) {
+                    contactPhone = line.split(':').pop().trim().replace(/\r/g, '');
                 }
             }
             text = `[CONTACT_REF] ${displayName}|${contactPhone}|${vcard}`;
