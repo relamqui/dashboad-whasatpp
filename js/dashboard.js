@@ -26,29 +26,62 @@ document.addEventListener('DOMContentLoaded', () => {
 window.onload = async () => {
   const userStr = localStorage.getItem('wp_crm_user');
   const token = localStorage.getItem('wp_crm_token');
-  
+
+  // ── Garante que o overlay de loading esta visivel ──
+  const overlay = document.getElementById('dbLoadingOverlay');
+  const loadingMsg = document.getElementById('dbLoadingMsg');
+  if (overlay) overlay.style.display = 'flex';
+
   if (!userStr || !token) {
     window.location.href = 'index.html';
     return;
   }
-  
+
   const user = JSON.parse(userStr);
+
+  // ── Etapa 1: conectar ao DB e carregar dados reais ──
+  if (loadingMsg) loadingMsg.textContent = 'Autenticando e carregando conversas...';
+  let dbOk = false;
+  try {
+    await loadContacts();
+    dbOk = true;
+  } catch (e) {
+    console.error('[INIT] Falha ao conectar ao banco de dados:', e);
+    if (loadingMsg) loadingMsg.textContent = 'Erro ao conectar. Tentando novamente...';
+    try {
+      await new Promise(r => setTimeout(r, 2000));
+      await loadContacts();
+      dbOk = true;
+    } catch (e2) {
+      console.error('[INIT] Segunda tentativa falhou:', e2);
+      if (loadingMsg) loadingMsg.textContent = 'Falha na conexao. Redirecionando...';
+      setTimeout(() => { window.location.href = 'index.html'; }, 3000);
+      return;
+    }
+  }
+
+  // ── Etapa 2: inicializar interface apenas com dados reais ──
+  if (loadingMsg) loadingMsg.textContent = 'Carregando interface...';
   renderUserProfile(user);
   initSocket(token);
-  
-  await loadContacts();
-  renderInstanceSelector(); // Novo: carregar chips dinâmicos
+  renderInstanceSelector();
   renderTagFilter();
   renderChatList(getFilteredContacts());
-  
-  // Para usuários não-admin, recarregar contatos periodicamente
-  // para que novos chats com tags corretas apareçam automaticamente
+
+  // ── Etapa 3: esconder o overlay ──
+  if (overlay) {
+    overlay.style.transition = 'opacity 0.35s ease';
+    overlay.style.opacity = '0';
+    setTimeout(() => { overlay.style.display = 'none'; }, 360);
+  }
+
+  // Para usuarios nao-admin, recarregar contatos periodicamente
   if (user.role !== 'admin') {
     setInterval(async () => {
       await loadContacts();
       renderTagFilter();
       renderChatList(getFilteredContacts());
-    }, 30000); // A cada 30 segundos
+    }, 30000);
   }
 };
 
@@ -918,7 +951,20 @@ async function sendMessage() {
   const now = new Date();
   const time = `${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
 
-  // 1. Atualiza Localmente (Optimistic Update)
+  // ── Monta o prefixo com o primeiro nome do atendente ──
+  let textToSend = text;
+  try {
+    const userData = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
+    const fullName = userData.name || '';
+    const firstName = fullName.split(' ')[0]; // Pega apenas o primeiro nome
+    if (firstName) {
+      textToSend = `*${firstName}:*\n${text}`;
+    }
+  } catch (e) {
+    console.warn('[sendMessage] Nao foi possivel obter nome do atendente:', e);
+  }
+
+  // 1. Atualiza Localmente (Optimistic Update) — exibe texto original sem prefixo
   const tempId = 'temp_' + Date.now();
   const newMsg = { id: tempId, text, type: 'out', time };
   if (!currentChat.messages) currentChat.messages = [];
@@ -931,9 +977,9 @@ async function sendMessage() {
   textarea.value = '';
   autoResize(textarea);
 
-  // 2. Envia para o Backend
+  // 2. Envia para o Backend (com prefixo do atendente)
   try {
-    // Sanatiza o nmero (remove +, space, -, etc)
+    // Sanatiza o numero (remove +, space, -, etc)
     const cleanNumber = currentChat.phone.replace(/\D/g, '');
     
     // Se a instância for mock (inst1, inst2...), tenta pegar uma real
@@ -957,7 +1003,7 @@ async function sendMessage() {
       body: JSON.stringify({
         instance: targetInstance,
         number: cleanNumber,
-        text: text
+        text: textToSend  // Envia com o prefixo *Nome:*
       })
     });
 

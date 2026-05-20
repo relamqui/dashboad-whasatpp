@@ -11,6 +11,37 @@
 </head>
 <body>
 
+<!-- ======== LOADING OVERLAY ======== -->
+<div id="dbLoadingOverlay" style="
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #111b21;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+    <svg width="40" height="40" viewBox="0 0 32 32" fill="none">
+      <path d="M16 3C9.37 3 4 8.37 4 15c0 2.39.68 4.63 1.86 6.53L4 29l7.67-1.83C13.35 28.03 14.65 28 16 28c6.63 0 12-5.37 12-12S22.63 3 16 3z" fill="#00a884"/>
+    </svg>
+    <span style="font-size:22px;font-weight:700;color:#e9edef;letter-spacing:0.5px;">WPCRM</span>
+  </div>
+  <div style="
+    width: 44px; height: 44px;
+    border: 3px solid #2a3942;
+    border-top-color: #00a884;
+    border-radius: 50%;
+    animation: wpcrmSpin 0.8s linear infinite;
+  "></div>
+  <p id="dbLoadingMsg" style="color:#8696a0;font-size:14px;margin:0;">Conectando ao banco de dados...</p>
+  <style>
+    @keyframes wpcrmSpin { to { transform: rotate(360deg); } }
+  </style>
+</div>
+
 <!-- ======== APP CONTAINER ======== -->
 <div class="app-container" id="app">
 
@@ -128,10 +159,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
         </button>
         <div class="chat-header-info" onclick="toggleSidebar()">
-          <div class="chat-avatar" id="chatAvatar">J</div>
+          <div class="chat-avatar" id="chatAvatar">-</div>
           <div class="chat-header-text">
-            <h3 id="chatName">João Silva</h3>
-            <span id="chatStatus" class="chat-status">Online</span>
+            <h3 id="chatName">-</h3>
+            <span id="chatStatus" class="chat-status">-</span>
           </div>
         </div>
         <div class="chat-header-actions">
@@ -229,24 +260,22 @@
     </div>
 
     <div class="contact-profile">
-      <div class="contact-big-avatar" id="detailsAvatar">J</div>
-      <h3 id="detailsName">João Silva</h3>
-      <p id="detailsPhone">+55 11 99999-0001</p>
+      <div class="contact-big-avatar" id="detailsAvatar">-</div>
+      <h3 id="detailsName">-</h3>
+      <p id="detailsPhone">-</p>
     </div>
 
     <div class="details-section">
       <h4>Instância</h4>
       <div class="detail-item">
         <span class="chip-dot connected"></span>
-        <span id="detailsInstance">Empresa Alpha</span>
+        <span id="detailsInstance">-</span>
       </div>
     </div>
 
     <div class="details-section">
       <h4>Etiquetas</h4>
       <div class="tags-area" id="tagsArea">
-        <div class="tag tag-green">Novo Lead</div>
-        <div class="tag tag-blue">Vendas</div>
         <button class="tag tag-add" onclick="addTag()">+ Adicionar</button>
       </div>
     </div>
