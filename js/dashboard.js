@@ -976,6 +976,12 @@ async function sendMessage() {
   renderChatList(getFilteredContacts());
   textarea.value = '';
   autoResize(textarea);
+  updateSendBtn();
+  // Garante scroll para o final apos renderizacao no DOM
+  requestAnimationFrame(() => {
+    const area = document.getElementById('messagesArea');
+    if (area) area.scrollTop = area.scrollHeight;
+  });
 
   // 2. Envia para o Backend (com prefixo do atendente)
   try {
@@ -1284,17 +1290,25 @@ function updateContactDetails(contact) {
 
   const tagsArea = document.getElementById('tagsArea');
   tagsArea.innerHTML = '';
+  const currentUser = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
+  const isAdmin = currentUser.role === 'admin';
   contact.tags.forEach(tag => {
     const el = document.createElement('div');
     el.className = 'tag ' + tagColor(tag);
-    el.innerHTML = `<span>${escapeHtml(tag)}</span><span style="cursor:pointer;margin-left:6px;opacity:0.7;font-weight:bold" onclick="removeTag('${tag.replace(/'/g, "\\'")}')" title="Remover etiqueta">✕</span>`;
+    if (isAdmin) {
+      el.innerHTML = `<span>${escapeHtml(tag)}</span><span style="cursor:pointer;margin-left:6px;opacity:0.7;font-weight:bold" onclick="removeTag('${tag.replace(/'/g, "\\'")}')" title="Remover etiqueta">✕</span>`;
+    } else {
+      el.innerHTML = `<span>${escapeHtml(tag)}</span>`;
+    }
     tagsArea.appendChild(el);
   });
-  const addBtn = document.createElement('button');
-  addBtn.className = 'tag tag-add';
-  addBtn.textContent = '+ Adicionar';
-  addBtn.onclick = addTag;
-  tagsArea.appendChild(addBtn);
+  if (isAdmin) {
+    const addBtn = document.createElement('button');
+    addBtn.className = 'tag tag-add';
+    addBtn.textContent = '+ Adicionar';
+    addBtn.onclick = addTag;
+    tagsArea.appendChild(addBtn);
+  }
 }
 
 function toggleSidebar() {
@@ -2001,6 +2015,11 @@ async function saveTagsToBackend(contactId, tags) {
 }
 
 function addTag() {
+  const currentUser = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
+  if (currentUser.role !== 'admin') {
+    showToast('Apenas administradores podem adicionar etiquetas.');
+    return;
+  }
   const input = prompt('Nome da etiqueta:');
   if (input && input.trim() && currentChat) {
     const tag = input.trim();
@@ -2014,6 +2033,11 @@ function addTag() {
 }
 
 function removeTag(tagToRemove) {
+  const currentUser = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
+  if (currentUser.role !== 'admin') {
+    showToast('Apenas administradores podem remover etiquetas.');
+    return;
+  }
   if (currentChat && currentChat.tags) {
     currentChat.tags = currentChat.tags.filter(t => t !== tagToRemove);
     updateContactDetails(currentChat);
