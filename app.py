@@ -1040,8 +1040,18 @@ def send_message():
         url = f"{os.getenv('EVOLUTION_API_URL')}/message/sendText/{inst}"
         headers = {'apikey': os.getenv('EVOLUTION_API_KEY')}
         payload = {"number": number, "text": text}
-        res = requests.post(url, json=payload, headers=headers)
+        print(f"[SEND] URL: {url}")
+        print(f"[SEND] Payload: number={number}, text={text[:50]}...")
+        res = requests.post(url, json=payload, headers=headers, timeout=30)
+        print(f"[SEND] Response status: {res.status_code}")
+        print(f"[SEND] Response body: {res.text[:300]}")
         res_data = res.json()
+        
+        # Verificar se a Evolution API retornou erro
+        if res.status_code != 200 and res.status_code != 201:
+            error_msg = res_data.get('response', {}).get('message', res_data.get('message', str(res_data)))
+            print(f"[SEND] ERRO Evolution API: {error_msg}")
+            return jsonify({'error': f'Evolution API erro: {error_msg}'}), res.status_code
         
         msg_id = res_data.get('key', {}).get('id') or res_data.get('messageId') or f"out_{int(now.timestamp())}"
         contact_id = f"c_{number}_{inst}"
