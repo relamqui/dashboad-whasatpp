@@ -1882,6 +1882,15 @@ def webhook():
             waha_id = payload.get('id', '')
             waha_from = payload.get('from', '')
             waha_to = payload.get('to', '')
+            
+            # NOWEB support for @lid fallback
+            remote_jid_alt = payload.get('_data', {}).get('key', {}).get('remoteJidAlt')
+            if remote_jid_alt:
+                if waha_from and waha_from.endswith('@lid'):
+                    waha_from = remote_jid_alt
+                if waha_to and waha_to.endswith('@lid'):
+                    waha_to = remote_jid_alt
+                    
             fromMe = payload.get('fromMe', False)
             body = payload.get('body', '')
             msg_type = payload.get('type', 'chat')
@@ -2837,6 +2846,27 @@ def api_migrate_to_corpal():
                 
         db_sql.session.commit()
         return jsonify({'success': True, 'updated': updated_contacts})
+    except Exception as e:
+        db_sql.session.rollback()
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/chat/<path:contact_id>', methods=['DELETE'])
+@auth_required
+def api_delete_chat(contact_id):
+    # Opcional: verificar se o usuário é admin. Por enquanto vou deixar o gestor e admin apagarem.
+    try:
+        contact = Contact.query.filter_by(id=contact_id).first()
+        if not contact:
+            return jsonify({'error': 'Contato não encontrado'}), 404
+        
+        # Deletar todas as mensagens vinculadas a esse contato
+        Message.query.filter_by(contact_id=contact_id).delete()
+        
+        # Deletar o contato
+        db_sql.session.delete(contact)
+        db_sql.session.commit()
+        
+        return jsonify({'success': True}), 200
     except Exception as e:
         db_sql.session.rollback()
         return jsonify({'error': str(e), 'success': False}), 500

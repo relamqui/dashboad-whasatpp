@@ -2268,6 +2268,42 @@ function closeLightbox(e) {
   }
 }
 
+// ─── Apagar Chat (Admin/Gestor) ─────────────────────────────────────────────
+async function deleteCurrentChat() {
+  if (!currentChat) return;
+  if (!confirm('Tem certeza que deseja apagar essa conversa inteira? Essa ação não pode ser desfeita e todas as mensagens serão perdidas.')) return;
+  
+  try {
+    const response = await fetch(`${API_URL}/api/chat/${encodeURIComponent(currentChat.id)}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}` }
+    });
+    
+    if (response.ok) {
+      showToast('Conversa apagada com sucesso!');
+      
+      // Remove da lista atual
+      chats = chats.filter(c => c.id !== currentChat.id);
+      
+      // Fecha a janela de chat
+      document.getElementById('chatEmpty').style.display = 'flex';
+      document.getElementById('chatInterface').style.display = 'none';
+      if (window.innerWidth > 992) {
+        document.getElementById('sidebarDetails').classList.remove('open');
+      }
+      currentChat = null;
+      
+      renderChats();
+    } else {
+      const data = await response.json();
+      showToast('Erro ao apagar conversa: ' + (data.error || 'Erro desconhecido'));
+    }
+  } catch (e) {
+    console.error('Erro ao deletar chat:', e);
+    showToast('Erro ao apagar conversa. Verifique sua conexão.');
+  }
+}
+
 // ─── Transferência de Chat (Admin) ──────────────────────────────────────────
 async function openTransferModal() {
   if (!currentChat) return;
