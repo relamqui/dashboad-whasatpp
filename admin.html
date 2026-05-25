@@ -266,8 +266,13 @@
             <button class="btn-save-notes" style="background:#f39c12; padding:8px 16px; border:none; border-radius:6px; color:white; font-weight:600; cursor:pointer;" onclick="execMigrateFilialNames()">🔄 Atualizar Nomes de Filiais nos Setores</button>
             <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
               Preenche o campo "filial_name" em todos os setores existentes para o bot identificar corretamente.
+            <hr style="border-color: var(--border); margin: 16px 0;">
+            <button class="btn-save-notes" style="background:#00bcd4; padding:8px 16px; border:none; border-radius:6px; color:white; font-weight:600; cursor:pointer;" onclick="execFix13Digits()">📱 Corrigir Números com 13 Dígitos</button>
+            <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
+              Varre o banco de dados e converte todos os contatos com 13 dígitos para 12 (removendo o 9º dígito), compatibilizando com o WAHA.
             </p>
           </div>
+
         </section>
 
         <!-- Botões de Ação -->
@@ -542,6 +547,22 @@
       const res = await apiFetch('/api/admin/migrate-filial-names', 'POST');
       if (res && res.updated !== undefined) {
         alert(`Migração concluída!\n\n${res.updated} setores atualizados com o nome da filial.`);
+      }
+
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }
+
+    async function execFix13Digits() {
+      if(!confirm('Atenção: Isso vai varrer o banco de dados e converter todos os números com 13 dígitos para 12 dígitos, atualizando também o histórico de mensagens.\\n\\nDeseja prosseguir?')) return;
+      const btn = document.querySelector('button[onclick="execFix13Digits()"]');
+      const originalText = btn.textContent;
+      btn.textContent = 'Convertendo...';
+      btn.disabled = true;
+
+      const res = await apiFetch('/api/admin/fix-13-digits', 'POST');
+      if (res && res.updated !== undefined) {
+        alert(`Limpeza Concluída!\\n\\n${res.updated} contatos com 13 dígitos foram convertidos para 12 dígitos com sucesso.`);
       }
 
       btn.textContent = originalText;

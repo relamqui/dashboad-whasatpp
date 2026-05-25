@@ -2750,6 +2750,36 @@ def api_migrate_filial_names():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/admin/fix-13-digits', methods=['POST'])
+@auth_required
+@admin_required
+def api_fix_13_digits():
+    try:
+        updated_contacts = 0
+        contacts = Contact.query.all()
+        for c in contacts:
+            number = c.phone
+            if number and len(number) == 13 and number.startswith('55') and number[4] == '9':
+                new_number = number[:4] + number[5:]
+                old_id = c.id
+                new_id = f"c_{new_number}_{c.instance}"
+                
+                db_sql.session.execute(
+                    db_sql.text("UPDATE message SET contact_id = :new_id WHERE contact_id = :old_id"),
+                    {"new_id": new_id, "old_id": old_id}
+                )
+                db_sql.session.execute(
+                    db_sql.text("UPDATE contact SET id = :new_id, phone = :new_phone, name = :new_name WHERE id = :old_id"),
+                    {"new_id": new_id, "new_phone": new_number, "new_name": new_number if c.name == number else c.name, "old_id": old_id}
+                )
+                updated_contacts += 1
+        
+        db_sql.session.commit()
+        return jsonify({'success': True, 'updated': updated_contacts})
+    except Exception as e:
+        db_sql.session.rollback()
+        return jsonify({'error': str(e), 'success': False}), 500
+
 @app.route('/api/chat/transfer', methods=['POST'])
 @auth_required
 def chat_transfer():
