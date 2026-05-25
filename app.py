@@ -2056,15 +2056,26 @@ def webhook():
                     # fallback
                     evo_data['data']['message']['documentMessage'] = {"fileName": 'Arquivo'}
             elif msg_type == 'location':
+                loc_name = payload.get('location', {}).get('description') or payload.get('body') or ''
                 evo_data['data']['message']['locationMessage'] = {
                     "degreesLatitude": payload.get('location', {}).get('latitude', ''),
                     "degreesLongitude": payload.get('location', {}).get('longitude', ''),
-                    "name": payload.get('location', {}).get('description', body),
+                    "name": loc_name,
                 }
             elif msg_type in ('vcard', 'contact'):
+                vcards = payload.get('vCards') or []
+                vcard_str = vcards[0] if isinstance(vcards, list) and len(vcards) > 0 else (body or '')
+                
+                display_name = "Contato"
+                if vcard_str and isinstance(vcard_str, str):
+                    for line in vcard_str.split('\n'):
+                        if line.startswith('FN:'):
+                            display_name = line.split('FN:')[1].strip()
+                            break
+                            
                 evo_data['data']['message']['contactMessage'] = {
-                    "vcard": body,
-                    "displayName": "Contato"
+                    "vcard": vcard_str,
+                    "displayName": display_name
                 }
             else:
                 evo_data['data']['message']['conversation'] = body
