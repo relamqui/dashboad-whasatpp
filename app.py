@@ -148,8 +148,6 @@ def normalize_br_phone(phone_str):
     p = str(phone_str)
     p = p.split('@')[0]
     p = "".join(filter(str.isdigit, p))
-    if p.startswith('55') and len(p) == 12:
-        return f"{p[:4]}9{p[4:]}"
     return p
 
 def get_media_base64(instance, msg_data):
