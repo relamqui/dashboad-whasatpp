@@ -739,7 +739,7 @@ function renderMessages(messages) {
         const docInstance = parts[0];
         const docMsgId = parts[1];
         const docName = parts[2] || 'Arquivo';
-        const docSrc = `${API_URL}/api/media/image?instance=${encodeURIComponent(docInstance)}&msg_id=${encodeURIComponent(docMsgId)}&token=${encodeURIComponent(authToken)}`;
+        const docSrc = `${API_URL}/api/media/document?instance=${encodeURIComponent(docInstance)}&msg_id=${encodeURIComponent(docMsgId)}&token=${encodeURIComponent(authToken)}`;
         messageContent = `<a href="${docSrc}" target="_blank" class="msg-doc" style="display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; text-decoration: none; color: inherit;">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
             <span>${escapeHtml(docName)}</span>

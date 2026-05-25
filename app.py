@@ -1487,6 +1487,33 @@ def send_document():
             res_data = {'message': res.text}
 
         msg_id = extract_waha_msg_id(res_data, f"doc_out_{int(now.timestamp())}")
+        
+        # --- NEW CACHING LOGIC ---
+        try:
+            import base64, re, os
+            media_dir = os.path.join(DATA_DIR, 'media')
+            os.makedirs(media_dir, exist_ok=True)
+            clean_b64 = re.sub(r'[^A-Za-z0-9+/]', '', doc_raw)
+            pad_raw = clean_b64 + "=" * ((4 - len(clean_b64) % 4) % 4)
+            short_id = msg_id.split('_')[-1]
+            
+            _, file_ext = os.path.splitext(doc_name)
+            if not file_ext:
+                if 'application/pdf' in mimetype: file_ext = '.pdf'
+                elif 'application/zip' in mimetype: file_ext = '.zip'
+                elif 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' in mimetype: file_ext = '.docx'
+                elif 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' in mimetype: file_ext = '.xlsx'
+                elif 'text/plain' in mimetype: file_ext = '.txt'
+                else: file_ext = '.bin'
+            
+            with open(os.path.join(media_dir, msg_id + file_ext), 'wb') as f:
+                f.write(base64.b64decode(pad_raw))
+            with open(os.path.join(media_dir, short_id + file_ext), 'wb') as f:
+                f.write(base64.b64decode(pad_raw))
+        except Exception as e:
+            print(f"[Send Document] Erro ao salvar arquivo local: {e}")
+        # -------------------------
+
         text = f"[DOC_REF] {inst}|{msg_id}|{doc_name}"
 
         contact_id = f"c_{number}_{inst}"
@@ -3097,16 +3124,18 @@ def stream_media(media_type):
         short_id = msg_id.split('_')[-1]
         local_path_short = os.path.join(media_dir, short_id)
         
+        import glob
         cache_path = None
-        # Tentar com e sem extensão para retrocompatibilidade e arquivos novos
-        exts = ['.webm', '.ogg', '.jpeg', '.jpg', '.png', '.webp', '.mp4', '']
-        for ext in exts:
-            if os.path.exists(local_path + ext):
-                cache_path = local_path + ext
-                break
-            if os.path.exists(local_path_short + ext):
-                cache_path = local_path_short + ext
-                break
+        
+        matches = glob.glob(local_path + '.*')
+        if os.path.exists(local_path): matches.insert(0, local_path)
+        
+        matches_short = glob.glob(local_path_short + '.*')
+        if os.path.exists(local_path_short): matches_short.insert(0, local_path_short)
+        
+        for p in matches + matches_short:
+            cache_path = p
+            break
             
         if cache_path:
             print(f"[{media_type.capitalize()} Proxy] Servindo do cache local: {cache_path}")
@@ -3122,10 +3151,20 @@ def stream_media(media_type):
                         content_type = 'audio/webm'
                 except:
                     content_type = 'audio/webm'
+            elif media_type == 'document':
+                import mimetypes
+                guess, _ = mimetypes.guess_type(cache_path)
+                if guess:
+                    content_type = guess
+                else:
+                    content_type = 'application/octet-stream'
             
             with open(cache_path, 'rb') as f:
                 file_bytes = f.read()
-            return Response(file_bytes, mimetype=content_type, headers={'Content-Disposition': 'inline', 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=3600'})
+                
+            # Content-Disposition inline with fallback to attachment for unknown docs
+            cd = 'inline' if media_type in ('audio', 'image', 'video', 'document') else 'attachment'
+            return Response(file_bytes, mimetype=content_type, headers={'Content-Disposition': cd, 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=3600'})
 
         # Tentar usar apenas o ID curto (final) porque o NOWEB usa o ID curto no /api/files
         short_id = msg_id.split('_')[-1]
