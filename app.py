@@ -3044,6 +3044,18 @@ def stream_media(media_type):
         local_path = os.path.join(media_dir, msg_id)
         if os.path.exists(local_path):
             print(f"[{media_type.capitalize()} Proxy] Servindo do cache local: {msg_id}")
+            if media_type == 'audio':
+                try:
+                    with open(local_path, 'rb') as f:
+                        header = f.read(4)
+                    if header.startswith(b'OggS'):
+                        content_type = 'audio/ogg'
+                    elif header.startswith(b'\x1aE\xdf\xa3'):
+                        content_type = 'audio/webm'
+                    else:
+                        content_type = 'audio/webm'
+                except:
+                    content_type = 'audio/webm'
             return send_file(local_path, mimetype=content_type)
 
         # Tentar usar apenas o ID curto (final) porque o NOWEB usa o ID curto no /api/files
@@ -3072,19 +3084,37 @@ def stream_media(media_type):
             file_bytes = res.content
             ctype_waha = res.headers.get('Content-Type', '')
             
-            # Se o WAHA retornou JSON com base64
+            # Se o WAHA retornou JSON
             if 'application/json' in ctype_waha:
                 try:
                     import base64
                     json_data = res.json()
+                    
+                    if 'mimetype' in json_data:
+                        content_type = json_data['mimetype']
+                        
                     if 'data' in json_data:
                         raw = json_data['data']
                         raw += "=" * ((4 - len(raw) % 4) % 4)
                         file_bytes = base64.b64decode(raw)
-                        if 'mimetype' in json_data:
-                            content_type = json_data['mimetype']
+                    elif 'url' in json_data:
+                        # Arquivo físico hospedado no próprio WAHA
+                        waha_file_url = json_data['url']
+                        # Garantir que aponte pro host correto caso WAHA retorne localhost
+                        if waha_file_url.startswith('http://localhost') or waha_file_url.startswith('http://127.0.0.1'):
+                            from urllib.parse import urlparse
+                            parsed = urlparse(waha_file_url)
+                            waha_file_url = f"{WAHA_API_URL}{parsed.path}"
+                            
+                        # Buscar o arquivo binário real
+                        file_res = requests.get(waha_file_url, headers=get_waha_headers(), timeout=15)
+                        if file_res.status_code == 200:
+                            file_bytes = file_res.content
+                            ctype_waha = file_res.headers.get('Content-Type', '')
+                            if ctype_waha and ctype_waha != 'application/octet-stream':
+                                content_type = ctype_waha
                 except Exception as e:
-                    print("Erro ao decodificar JSON do WAHA:", e)
+                    print("Erro ao processar JSON do WAHA:", e)
             else:
                 if ctype_waha and ctype_waha != 'application/octet-stream':
                     content_type = ctype_waha
