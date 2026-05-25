@@ -30,8 +30,8 @@ services:
       - PORT=3008
       - DATABASE_URL=postgresql://${POSTGRES_USER:-wpcrm_user}:${POSTGRES_PASSWORD:-wpcrm_pass_secure}@database:5432/${POSTGRES_DB:-wpcrm}
       - JWT_SECRET=${JWT_SECRET}
-      - EVOLUTION_API_URL=${EVOLUTION_API_URL}
-      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+      - WAHA_API_URL=${WAHA_API_URL}
+      - WAHA_API_KEY=${WAHA_API_KEY}
       - DB_PATH=/app/data/db.json
     volumes:
       - wpcrm_data:/app/data

@@ -22,6 +22,15 @@ from flask import Response
 
 load_dotenv()
 
+WAHA_API_URL = os.getenv('WAHA_API_URL', 'http://localhost:3000').rstrip('/')
+WAHA_API_KEY = os.getenv('WAHA_API_KEY', '')
+
+def get_waha_headers():
+    headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
+    if WAHA_API_KEY:
+        headers['X-Api-Key'] = WAHA_API_KEY
+    return headers
+
 CORPAL_WEBHOOK_URL = 'https://n8n-n8n.ioms5g.easypanel.host/webhook/corpal-metrica'
 
 app = Flask(__name__)
@@ -141,14 +150,15 @@ def normalize_br_phone(phone_str):
 
 def get_media_base64(instance, msg_data):
     try:
-        url = f"{os.getenv('EVOLUTION_API_URL')}/chat/getBase64FromMediaMessage/{instance}"
-        headers = {'apikey': os.getenv('EVOLUTION_API_KEY'), 'Content-Type': 'application/json'}
-        payload = {"message": msg_data}
-        res = requests.post(url, json=payload, headers=headers, timeout=10)
+        msg_id = msg_data.get('id')
+        if not msg_id: return None
+        url = f"{WAHA_API_URL}/api/files?session={instance}&messageId={msg_id}"
+        res = requests.get(url, headers=get_waha_headers(), timeout=15)
         if res.status_code == 200:
-            return res.json().get('base64')
+            import base64
+            return base64.b64encode(res.content).decode('utf-8')
     except Exception as e:
-        print(f"Erro ao baixar midia base64: {e}")
+        print(f"Erro ao baixar midia base64 (WAHA): {e}")
     return None
 
 # ─── Database JSON Fallback / Migration ──────────────────────────────────────
@@ -338,7 +348,7 @@ def health():
     return jsonify({
         'status': 'ok',
         'port': 3008,
-        'evolution_url': os.getenv('EVOLUTION_API_URL')
+        'waha_url': WAHA_API_URL
     })
 
 @app.route('/api/bot/tags', methods=['POST'])
@@ -437,7 +447,7 @@ def add_bot_tag():
         
     return jsonify({'success': True, 'contact_id': contact.id, 'tags': contact.tags}), 200
 
-# ─── Webhooks Evolution API ────────────────────────────────────────────────────────────
+# ─── Webhooks WAHA API ────────────────────────────────────────────────────────────
 
 # ─── Auth Routes ────────────────────────────────────────────────────────────
 
@@ -989,9 +999,8 @@ def gestor_update_user(user_id):
 @auth_required
 def get_instances():
     try:
-        url = f"{os.getenv('EVOLUTION_API_URL')}/instance/fetchInstances"
-        headers = {'apikey': os.getenv('EVOLUTION_API_KEY')}
-        response = requests.get(url, headers=headers)
+        url = f"{WAHA_API_URL}/api/sessions/?all=true"
+        response = requests.get(url, headers=get_waha_headers())
         all_inst = response.json()
         
         if request.user.get('role') != 'admin':
@@ -1000,12 +1009,12 @@ def get_instances():
                 allowed = get_gestor_allowed_instances(user)
             else:
                 allowed = set(user.instances or [])
-            all_inst = [i for i in all_inst if (i.get('instanceName') or i.get('name')) in allowed]
+            all_inst = [i for i in all_inst if (i.get('name') or i.get('instanceName')) in allowed]
             
         return jsonify(all_inst)
     except Exception as e:
         print(f"Erro ao buscar instâncias: {str(e)}")
-        return jsonify({'error': f"Erro na Evolution API: {str(e)}"}), 500
+        return jsonify({'error': f"Erro na WAHA API: {str(e)}"}), 500
 
 @app.route('/api/whatsapp/send', methods=['POST'])
 @auth_required
@@ -1036,24 +1045,23 @@ def send_message():
         now = get_now()
         time_str = now.strftime("%d/%m %H:%M")
         
-        # Chamada para a API externa (Evolution)
-        url = f"{os.getenv('EVOLUTION_API_URL')}/message/sendText/{inst}"
-        headers = {'apikey': os.getenv('EVOLUTION_API_KEY')}
-        payload = {"number": number, "text": text}
+        # Chamada para a API externa (WAHA)
+        url = f"{WAHA_API_URL}/api/sendText"
+        payload = {"session": inst, "chatId": f"{number}@c.us", "text": text}
         print(f"[SEND] URL: {url}")
         print(f"[SEND] Payload: number={number}, text={text[:50]}...")
-        res = requests.post(url, json=payload, headers=headers, timeout=30)
+        res = requests.post(url, json=payload, headers=get_waha_headers(), timeout=30)
         print(f"[SEND] Response status: {res.status_code}")
         print(f"[SEND] Response body: {res.text[:300]}")
         res_data = res.json()
         
-        # Verificar se a Evolution API retornou erro
+        # Verificar se a API retornou erro
         if res.status_code != 200 and res.status_code != 201:
             error_msg = res_data.get('response', {}).get('message', res_data.get('message', str(res_data)))
-            print(f"[SEND] ERRO Evolution API: {error_msg}")
-            return jsonify({'error': f'Evolution API erro: {error_msg}'}), res.status_code
+            print(f"[SEND] ERRO WAHA API: {error_msg}")
+            return jsonify({'error': f'WAHA API erro: {error_msg}'}), res.status_code
         
-        msg_id = res_data.get('key', {}).get('id') or res_data.get('messageId') or f"out_{int(now.timestamp())}"
+        msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"out_{int(now.timestamp())}"
         contact_id = f"c_{number}_{inst}"
         
         # Atualizar ou Criar Contato
@@ -1147,7 +1155,7 @@ def send_message():
 @app.route('/api/whatsapp/send-audio', methods=['POST'])
 @auth_required
 def send_audio():
-    """Envia audio gravado pelo atendente ao cliente via Evolution API."""
+    """Envia audio gravado pelo atendente ao cliente via WAHA API."""
     data = request.json
     inst = data.get('instance')
     number = "".join(filter(str.isdigit, str(data.get('number', ''))))
@@ -1161,21 +1169,28 @@ def send_audio():
         now = get_now()
         time_str = now.strftime("%d/%m %H:%M")
 
-        # Enviar via Evolution API
-        # Evolution exige base64 puro (sem prefixo data:audio/xxx;base64,)
+        # Enviar via WAHA API
         audio_raw = audio_b64
+        mimetype = "audio/ogg; codecs=opus"
         if ';base64,' in audio_raw:
-            audio_raw = audio_raw.split(';base64,', 1)[1]
+            mime_part, audio_raw = audio_raw.split(';base64,', 1)
+            mimetype = mime_part.replace('data:', '')
 
-        url = f"{os.getenv('EVOLUTION_API_URL')}/message/sendWhatsAppAudio/{inst}"
-        headers = {'apikey': os.getenv('EVOLUTION_API_KEY'), 'Content-Type': 'application/json'}
-        payload = {"number": number, "audio": audio_raw}
+        url = f"{WAHA_API_URL}/api/sendVoice"
+        payload = {
+            "session": inst,
+            "chatId": f"{number}@c.us",
+            "file": {
+                "mimetype": mimetype,
+                "data": audio_raw
+            }
+        }
         print(f"[Send Audio] Enviando audio para {number} via {inst}")
-        res = requests.post(url, json=payload, headers=headers, timeout=30)
+        res = requests.post(url, json=payload, headers=get_waha_headers(), timeout=30)
         res_data = res.json()
         print(f"[Send Audio] Resposta: status={res.status_code} body={json.dumps(res_data)[:300]}")
 
-        msg_id = res_data.get('key', {}).get('id') or res_data.get('messageId') or f"audio_out_{int(now.timestamp())}"
+        msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"audio_out_{int(now.timestamp())}"
         text = f"[AUDIO_REF] {inst}|{msg_id}"
 
         contact_id = f"c_{number}_{inst}"
@@ -1229,19 +1244,20 @@ def send_image():
             mime_part, image_raw = image_raw.split(';base64,', 1)
             mimetype = mime_part.replace('data:', '')
 
-        url = f"{os.getenv('EVOLUTION_API_URL')}/message/sendMedia/{inst}"
-        headers = {'apikey': os.getenv('EVOLUTION_API_KEY'), 'Content-Type': 'application/json'}
+        url = f"{WAHA_API_URL}/api/sendImage"
         payload = {
-            "number": number,
-            "mediatype": "image",
-            "mimetype": mimetype,
+            "session": inst,
+            "chatId": f"{number}@c.us",
             "caption": caption,
-            "media": image_raw
+            "file": {
+                "mimetype": mimetype,
+                "data": image_raw
+            }
         }
-        res = requests.post(url, json=payload, headers=headers, timeout=30)
+        res = requests.post(url, json=payload, headers=get_waha_headers(), timeout=30)
         res_data = res.json()
 
-        msg_id = res_data.get('key', {}).get('id') or res_data.get('messageId') or f"img_out_{int(now.timestamp())}"
+        msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"img_out_{int(now.timestamp())}"
         text = f"[IMAGE_REF] {inst}|{msg_id}"
         if caption:
             text += f"\n{caption}"
@@ -1293,19 +1309,20 @@ def send_video():
             mime_part, video_raw = video_raw.split(';base64,', 1)
             mimetype = mime_part.replace('data:', '')
 
-        url = f"{os.getenv('EVOLUTION_API_URL')}/message/sendMedia/{inst}"
-        headers = {'apikey': os.getenv('EVOLUTION_API_KEY'), 'Content-Type': 'application/json'}
+        url = f"{WAHA_API_URL}/api/sendVideo"
         payload = {
-            "number": number,
-            "mediatype": "video",
-            "mimetype": mimetype,
+            "session": inst,
+            "chatId": f"{number}@c.us",
             "caption": caption,
-            "media": video_raw
+            "file": {
+                "mimetype": mimetype,
+                "data": video_raw
+            }
         }
-        res = requests.post(url, json=payload, headers=headers, timeout=60)
+        res = requests.post(url, json=payload, headers=get_waha_headers(), timeout=60)
         res_data = res.json()
 
-        msg_id = res_data.get('key', {}).get('id') or res_data.get('messageId') or f"vid_out_{int(now.timestamp())}"
+        msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"vid_out_{int(now.timestamp())}"
         text = f"[VIDEO_REF] {inst}|{msg_id}"
         if caption:
             text += f"\n{caption}"
@@ -1358,20 +1375,21 @@ def send_document():
             mime_part, doc_raw = doc_raw.split(';base64,', 1)
             mimetype = mime_part.replace('data:', '')
 
-        url = f"{os.getenv('EVOLUTION_API_URL')}/message/sendMedia/{inst}"
-        headers = {'apikey': os.getenv('EVOLUTION_API_KEY'), 'Content-Type': 'application/json'}
+        url = f"{WAHA_API_URL}/api/sendFile"
         payload = {
-            "number": number,
-            "mediatype": "document",
-            "mimetype": mimetype,
-            "fileName": doc_name,
+            "session": inst,
+            "chatId": f"{number}@c.us",
             "caption": caption,
-            "media": doc_raw
+            "file": {
+                "mimetype": mimetype,
+                "filename": doc_name,
+                "data": doc_raw
+            }
         }
-        res = requests.post(url, json=payload, headers=headers, timeout=60)
+        res = requests.post(url, json=payload, headers=get_waha_headers(), timeout=60)
         res_data = res.json()
 
-        msg_id = res_data.get('key', {}).get('id') or res_data.get('messageId') or f"doc_out_{int(now.timestamp())}"
+        msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"doc_out_{int(now.timestamp())}"
         text = f"[DOC_REF] {inst}|{msg_id}|{doc_name}"
 
         contact_id = f"c_{number}_{inst}"
@@ -1417,24 +1435,20 @@ def send_location():
         now = get_now()
         time_str = now.strftime("%d/%m %H:%M")
 
-        url = f"{os.getenv('EVOLUTION_API_URL')}/message/sendLocation/{inst}"
-        headers = {'apikey': os.getenv('EVOLUTION_API_KEY'), 'Content-Type': 'application/json'}
+        url = f"{WAHA_API_URL}/api/sendLocation"
         payload = {
-            "number": number,
-            "name": name,
-            "address": address,
+            "session": inst,
+            "chatId": f"{number}@c.us",
             "latitude": float(latitude),
             "longitude": float(longitude),
-            "options": {
-                "delay": 1200,
-                "presence": "composing"
-            }
+            "title": name,
+            "description": address
         }
-        res = requests.post(url, json=payload, headers=headers, timeout=60)
+        res = requests.post(url, json=payload, headers=get_waha_headers(), timeout=60)
         res.raise_for_status()
         res_data = res.json()
 
-        msg_id = res_data.get('key', {}).get('id') or res_data.get('messageId') or f"loc_out_{int(now.timestamp())}"
+        msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"loc_out_{int(now.timestamp())}"
         
         text = f"[LOCATION_REF] {latitude}|{longitude}|{name}|{address}"
 
@@ -1477,7 +1491,7 @@ def send_location():
 @app.route('/api/whatsapp/send-contact', methods=['POST'])
 @auth_required
 def send_contact():
-    """Envia um cartão de contato (vCard) para o cliente via Evolution API."""
+    """Envia um cartão de contato (vCard) para o cliente via WAHA API."""
     data = request.json
     inst = data.get('instance')
     number = "".join(filter(str.isdigit, str(data.get('number', ''))))
@@ -1509,24 +1523,23 @@ def send_contact():
             "END:VCARD"
         )
 
-        url = f"{os.getenv('EVOLUTION_API_URL')}/message/sendContact/{inst}"
-        headers = {'apikey': os.getenv('EVOLUTION_API_KEY'), 'Content-Type': 'application/json'}
+        url = f"{WAHA_API_URL}/api/sendContactVcard"
         payload = {
-            "number": number,
-            "contact": [
+            "session": inst,
+            "chatId": f"{number}@c.us",
+            "contacts": [
                 {
                     "fullName": contact_name,
-                    "wuid": contact_phone,
-                    "phoneNumber": f"+{contact_phone}"
+                    "phoneNumber": contact_phone
                 }
             ]
         }
         print(f"[Send Contact] Enviando contato '{contact_name}' ({contact_phone}) para {number} via {inst}")
-        res = requests.post(url, json=payload, headers=headers, timeout=30)
+        res = requests.post(url, json=payload, headers=get_waha_headers(), timeout=30)
         res_data = res.json()
         print(f"[Send Contact] Resposta: status={res.status_code} body={json.dumps(res_data)[:300]}")
 
-        msg_id = res_data.get('key', {}).get('id') or res_data.get('messageId') or f"contact_out_{int(now.timestamp())}"
+        msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"contact_out_{int(now.timestamp())}"
         text = f"[CONTACT_REF] {contact_name}|+{contact_phone}|{vcard}"
 
         contact_id = f"c_{number}_{inst}"
@@ -1571,12 +1584,12 @@ def bot_message_webhook():
         data = request.json
         if not data: return jsonify({'error': 'Body vazio'}), 400
         
-        # Suporte para o array bruto do N8N/Evolution
+        # Suporte para o array bruto do N8N/WAHA
         if isinstance(data, list) and len(data) > 0:
             data = data[0]
 
         if 'data' in data and 'key' in data.get('data', {}):
-            # Formato Evolution Originário
+            # Formato do Sistema Interno (mantido para retrocompatibilidade com N8N)
             d = data['data']
             inst = d.get('instanceId') or d.get('instance')
             phone = str(d.get('key', {}).get('remoteJid', '')).split('@')[0].split(':')[0]
@@ -1790,10 +1803,8 @@ start_wait_time_monitor()
 def fetch_and_update_avatar_async(contact_id, phone, instance):
     def _fetch():
         try:
-            url = f"{os.getenv('EVOLUTION_API_URL')}/chat/fetchProfilePictureUrl/{instance}"
-            headers = {'apikey': os.getenv('EVOLUTION_API_KEY'), 'Content-Type': 'application/json'}
-            payload = {"number": phone}
-            res = requests.post(url, json=payload, headers=headers, timeout=10)
+            url = f"{WAHA_API_URL}/api/contacts/profilePicture?session={instance}&phone={phone}@c.us"
+            res = requests.get(url, headers=get_waha_headers(), timeout=10)
             if res.status_code == 200:
                 data = res.json()
                 picture_url = data.get('profilePictureUrl')
@@ -1818,11 +1829,67 @@ def fetch_and_update_avatar_async(contact_id, phone, instance):
 
     threading.Thread(target=_fetch).start()
 
-@app.route('/api/webhooks/evolution', methods=['POST'])
+@app.route('/api/webhooks/waha', methods=['POST'])
 def webhook():
     try:
         data = request.json
         if not data: return 'OK', 200
+        # ---- WAHA TO INTERNAL CONVERTER ----
+        if data.get('event') in ('message', 'message.any', 'message.ack') and 'payload' in data:
+            waha_event = data.get('event')
+            session = data.get('session')
+            payload = data.get('payload', {})
+            
+            if waha_event == 'message.ack':
+                return 'OK', 200
+            waha_id = payload.get('id', '')
+            waha_from = payload.get('from', '')
+            waha_to = payload.get('to', '')
+            fromMe = payload.get('fromMe', False)
+            body = payload.get('body', '')
+            msg_type = payload.get('type', 'chat')
+
+            evo_data = {
+                "event": "messages.upsert",
+                "instance": session,
+                "data": {
+                    "key": {
+                        "remoteJid": waha_to if fromMe else waha_from,
+                        "fromMe": fromMe,
+                        "id": waha_id
+                    },
+                    "message": {}
+                }
+            }
+            
+            if payload.get('hasMedia') or msg_type in ('image', 'video', 'document', 'audio', 'ptt', 'voice'):
+                if msg_type == 'image':
+                    evo_data['data']['message']['imageMessage'] = {"caption": body}
+                elif msg_type == 'video':
+                    evo_data['data']['message']['videoMessage'] = {"caption": body}
+                elif msg_type in ('audio', 'ptt', 'voice'):
+                    evo_data['data']['message']['audioMessage'] = {}
+                elif msg_type == 'document':
+                    evo_data['data']['message']['documentMessage'] = {"fileName": body or 'Arquivo'}
+                else:
+                    # fallback
+                    evo_data['data']['message']['documentMessage'] = {"fileName": 'Arquivo'}
+            elif msg_type == 'location':
+                evo_data['data']['message']['locationMessage'] = {
+                    "degreesLatitude": payload.get('location', {}).get('latitude', ''),
+                    "degreesLongitude": payload.get('location', {}).get('longitude', ''),
+                    "name": payload.get('location', {}).get('description', body),
+                }
+            elif msg_type in ('vcard', 'contact'):
+                evo_data['data']['message']['contactMessage'] = {
+                    "vcard": body,
+                    "displayName": "Contato"
+                }
+            else:
+                evo_data['data']['message']['conversation'] = body
+
+            data = evo_data
+        # ---- FIM CONVERTER ----
         
         event = data.get('event')
         instance = data.get('instance')
@@ -2767,7 +2834,7 @@ def chat_transfer():
 
 @app.route('/api/media/<media_type>')
 def stream_media(media_type):
-    """Proxy de midia: busca o base64 da Evolution e retorna como stream.
+    """Proxy de midia: busca o arquivo da WAHA e retorna como stream.
     Aceita token via query param porque a tag media pode nao enviar headers customizados."""
     token = request.args.get('token') or (request.headers.get('Authorization', '').replace('Bearer ', ''))
     if not token:
@@ -2782,30 +2849,24 @@ def stream_media(media_type):
     if not instance or not msg_id:
         return jsonify({'error': 'instance e msg_id sao obrigatorios'}), 400
     try:
-        evo_url = f"{os.getenv('EVOLUTION_API_URL')}/chat/getBase64FromMediaMessage/{instance}"
-        headers = {'apikey': os.getenv('EVOLUTION_API_KEY'), 'Content-Type': 'application/json'}
-        payload = {"message": {"key": {"id": msg_id}}}
+        waha_url = f"{WAHA_API_URL}/api/files?session={instance}&messageId={msg_id}"
         print(f"[{media_type.capitalize()} Proxy] Buscando {media_type}: instance={instance} msg_id={msg_id}")
-        res = requests.post(evo_url, json=payload, headers=headers, timeout=15)
-        print(f"[{media_type.capitalize()} Proxy] status={res.status_code} resp_len={len(res.text)}")
+        res = requests.get(waha_url, headers=get_waha_headers(), timeout=15)
+        print(f"[{media_type.capitalize()} Proxy] status={res.status_code} resp_len={len(res.content)}")
         if res.status_code in (200, 201):
-            resp_data = res.json()
-            b64 = resp_data.get('base64')
-            if b64:
-                import base64 as b64lib
-                audio_bytes = b64lib.b64decode(b64)
-                
-                # Default mimetypes based on requested media_type just in case the API doesn't return one
-                default_mime = 'application/octet-stream'
-                if media_type == 'audio': default_mime = 'audio/ogg'
-                elif media_type == 'image': default_mime = 'image/jpeg'
-                elif media_type == 'video': default_mime = 'video/mp4'
-                
-                mime = resp_data.get('mimetype') or default_mime
-                return Response(audio_bytes, mimetype=mime,
-                    headers={'Content-Disposition': 'inline', 'Accept-Ranges': 'bytes',
-                             'Cache-Control': 'public, max-age=3600'})
-        return jsonify({'error': f'Nao foi possivel buscar {media_type}', 'evo_status': res.status_code, 'raw': res.text[:500]}), 502
+            # WAHA retorna o arquivo binário diretamente
+            content_type = res.headers.get('Content-Type', 'application/octet-stream')
+            
+            # Default mimetypes based on requested media_type
+            if content_type == 'application/octet-stream':
+                if media_type == 'audio': content_type = 'audio/ogg'
+                elif media_type == 'image': content_type = 'image/jpeg'
+                elif media_type == 'video': content_type = 'video/mp4'
+            
+            return Response(res.content, mimetype=content_type,
+                headers={'Content-Disposition': 'inline', 'Accept-Ranges': 'bytes',
+                         'Cache-Control': 'public, max-age=3600'})
+        return jsonify({'error': f'Nao foi possivel buscar {media_type}', 'waha_status': res.status_code}), 502
     except Exception as e:
         print(f"Erro stream_{media_type}: {e}")
         return jsonify({'error': str(e)}), 500

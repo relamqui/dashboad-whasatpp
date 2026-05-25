@@ -18,8 +18,8 @@
 | `POSTGRES_DB` | Nome do banco (ex: `wpcrm`) |
 | `POSTGRES_USER` | Usuário do banco (ex: `wpcrm_user`) |
 | `POSTGRES_PASSWORD` | Senha do banco (use uma senha forte) |
-| `EVOLUTION_API_URL` | URL completa da sua Evolution API |
-| `EVOLUTION_API_KEY` | Chave da Evolution API |
+| `WAHA_API_URL` | URL completa da sua WAHA API (ex: `http://waha:3000`) |
+| `WAHA_API_KEY` | Chave da WAHA API (se configurada) |
 | `ADMIN_EMAIL` | E-mail para criação do primeiro acesso de Admin |
 | `ADMIN_PASSWORD` | Senha inicial para a conta Admin |
 
@@ -42,15 +42,17 @@
 
 ---
 
-## Webhook da Evolution API
+## Webhook da WAHA API
 
-Após o deploy, configure o webhook da Evolution API para apontar para:
+Após o deploy, configure o webhook da WAHA API para apontar para:
 
 ```
-https://SEU_DOMINIO/api/webhooks/evolution
+https://SEU_DOMINIO/api/webhooks/waha
 ```
 
-Os eventos necessários são: `messages.upsert`, `send.message`.
+No painel do WAHA, configure os eventos: `message`, `message.any`.
+
+> **Nota:** A rota antiga `/api/webhooks/evolution` também continua funcionando para retrocompatibilidade.
 
 ---
 

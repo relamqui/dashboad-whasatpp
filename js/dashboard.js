@@ -1030,7 +1030,7 @@ async function sendMessage() {
       newMsg.id = realId;
     }
     
-    console.log('Mensagem enviada via Evolution:', targetInstance);
+    console.log('Mensagem enviada via WAHA:', targetInstance);
   } catch (err) {
     console.error('Erro ao enviar mensagem:', err);
     showToast(`Erro ao enviar: ${err.message}`);
@@ -1334,7 +1334,7 @@ async function openInstancesModal() {
     renderInstances(instances);
   } catch (err) {
     console.error('Erro ao buscar instncias:', err);
-    list.innerHTML = `<div style="padding:20px;text-align:center;color:var(--error)">Falha ao conectar na Evolution API via Backend.</div>`;
+    list.innerHTML = `<div style="padding:20px;text-align:center;color:var(--error)">Falha ao conectar na WAHA API via Backend.</div>`;
   }
 }
 
@@ -1407,13 +1407,13 @@ function closeInstancesModal() {
 }
 
 function toggleInstance(id) {
-  // O ID pode ser o nome da instncia na Evolution
+  // O ID pode ser o nome da instncia na WAHA
   showToast(`Tentando alternar status da instncia: ${id}`);
-  // In production: call Evolution API to connect/disconnect instance
+  // In production: call WAHA API to connect/disconnect instance
 }
 
 function addInstance() {
-  alert('Integração com Evolution API: emitir POST /instance/create na sua VPS.');
+  alert('Integração com WAHA API: emitir POST /api/sessions/start na sua VPS.');
 }
 
 // ─── Filtering ────────────────────────────────────────────────────────────────
