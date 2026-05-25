@@ -1225,9 +1225,14 @@ def send_audio():
             pad_raw = clean_b64 + "=" * ((4 - len(clean_b64) % 4) % 4)
             # Salvar usando o ID original e o SHORT ID para não ter erro caso o webhook retorne ID diferente
             short_id = msg_id.split('_')[-1]
-            with open(os.path.join(media_dir, msg_id), 'wb') as f:
+            
+            # Forçar extensão
+            file_ext = '.webm'
+            if 'audio/ogg' in mimetype: file_ext = '.ogg'
+            
+            with open(os.path.join(media_dir, msg_id + file_ext), 'wb') as f:
                 f.write(base64.b64decode(pad_raw))
-            with open(os.path.join(media_dir, short_id), 'wb') as f:
+            with open(os.path.join(media_dir, short_id + file_ext), 'wb') as f:
                 f.write(base64.b64decode(pad_raw))
         except Exception as e:
             print(f"[Send Audio] Erro ao salvar arquivo local: {e}")
@@ -3051,10 +3056,12 @@ def stream_media(media_type):
         local_path_short = os.path.join(media_dir, short_id)
         
         cache_path = None
-        if os.path.exists(local_path):
-            cache_path = local_path
-        elif os.path.exists(local_path_short):
-            cache_path = local_path_short
+        # Tentar com e sem extensão para retrocompatibilidade e arquivos novos
+        for p in [local_path + '.webm', local_path + '.ogg', local_path, 
+                  local_path_short + '.webm', local_path_short + '.ogg', local_path_short]:
+            if os.path.exists(p):
+                cache_path = p
+                break
             
         if cache_path:
             print(f"[{media_type.capitalize()} Proxy] Servindo do cache local: {cache_path}")
@@ -3070,7 +3077,10 @@ def stream_media(media_type):
                         content_type = 'audio/webm'
                 except:
                     content_type = 'audio/webm'
-            return send_file(cache_path, mimetype=content_type)
+            
+            with open(cache_path, 'rb') as f:
+                file_bytes = f.read()
+            return Response(file_bytes, mimetype=content_type, headers={'Content-Disposition': 'inline', 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=3600'})
 
         # Tentar usar apenas o ID curto (final) porque o NOWEB usa o ID curto no /api/files
         short_id = msg_id.split('_')[-1]
