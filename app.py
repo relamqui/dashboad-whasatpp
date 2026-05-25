@@ -2013,7 +2013,7 @@ def webhook():
             body = payload.get('body', '')
             msg_type = payload.get('type', 'chat')
             
-            # Inferir tipo de mídia pelo mimetype se necessário
+            # Inferir tipo de mídia pelo mimetype ou por campos presentes se necessário
             if payload.get('hasMedia') and msg_type in ('chat', None, ''):
                 mimetype = payload.get('media', {}).get('mimetype', '')
                 if mimetype.startswith('audio/'):
@@ -2024,6 +2024,11 @@ def webhook():
                     msg_type = 'video'
                 else:
                     msg_type = 'document'
+            elif msg_type in ('chat', None, ''):
+                if payload.get('location'):
+                    msg_type = 'location'
+                elif payload.get('vCards'):
+                    msg_type = 'contact'
 
             evo_data = {
                 "event": "messages.upsert",
