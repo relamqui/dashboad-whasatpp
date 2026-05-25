@@ -1223,7 +1223,11 @@ def send_audio():
             # Remover quebras de linha e espaços antes de calcular o padding
             clean_b64 = re.sub(r'[^A-Za-z0-9+/]', '', audio_raw)
             pad_raw = clean_b64 + "=" * ((4 - len(clean_b64) % 4) % 4)
+            # Salvar usando o ID original e o SHORT ID para não ter erro caso o webhook retorne ID diferente
+            short_id = msg_id.split('_')[-1]
             with open(os.path.join(media_dir, msg_id), 'wb') as f:
+                f.write(base64.b64decode(pad_raw))
+            with open(os.path.join(media_dir, short_id), 'wb') as f:
                 f.write(base64.b64decode(pad_raw))
         except Exception as e:
             print(f"[Send Audio] Erro ao salvar arquivo local: {e}")
@@ -3043,11 +3047,20 @@ def stream_media(media_type):
         # Verificar se o arquivo existe localmente
         media_dir = os.path.join(DATA_DIR, 'media')
         local_path = os.path.join(media_dir, msg_id)
+        short_id = msg_id.split('_')[-1]
+        local_path_short = os.path.join(media_dir, short_id)
+        
+        cache_path = None
         if os.path.exists(local_path):
-            print(f"[{media_type.capitalize()} Proxy] Servindo do cache local: {msg_id}")
+            cache_path = local_path
+        elif os.path.exists(local_path_short):
+            cache_path = local_path_short
+            
+        if cache_path:
+            print(f"[{media_type.capitalize()} Proxy] Servindo do cache local: {cache_path}")
             if media_type == 'audio':
                 try:
-                    with open(local_path, 'rb') as f:
+                    with open(cache_path, 'rb') as f:
                         header = f.read(4)
                     if header.startswith(b'OggS'):
                         content_type = 'audio/ogg'
@@ -3057,7 +3070,7 @@ def stream_media(media_type):
                         content_type = 'audio/webm'
                 except:
                     content_type = 'audio/webm'
-            return send_file(local_path, mimetype=content_type)
+            return send_file(cache_path, mimetype=content_type)
 
         # Tentar usar apenas o ID curto (final) porque o NOWEB usa o ID curto no /api/files
         short_id = msg_id.split('_')[-1]
