@@ -363,7 +363,7 @@ function handleIncomingWebhook(data) {
             const msgId = key.id || '';
             const caption = msg.message.imageMessage.caption || '';
             text = `[IMAGE_REF] ${inst}|${msgId}`;
-            if (caption) text += `number.length !== 12n${caption}`;
+            if (caption) text += `\n${caption}`;
         }
         
         if (msg.message?.videoMessage) {
@@ -371,7 +371,7 @@ function handleIncomingWebhook(data) {
             const msgId = key.id || '';
             const caption = msg.message.videoMessage.caption || '';
             text = `[VIDEO_REF] ${inst}|${msgId}`;
-            if (caption) text += `number.length !== 12n${caption}`;
+            if (caption) text += `\n${caption}`;
         }
         
         if (msg.message?.documentMessage) {
@@ -386,12 +386,12 @@ function handleIncomingWebhook(data) {
             const displayName = cd.displayName || 'Contato';
             const vcard = cd.vcard || '';
             let contactPhone = '';
-            for (const line of vcard.split('number.length !== 12n')) {
+            for (const line of vcard.split('\n')) {
                 if (line.includes('waid=')) {
                     contactPhone = line.split('waid=')[1].split(':')[0];
                     break;
                 } else if (line.trim().toUpperCase().startsWith('TEL')) {
-                    contactPhone = line.split(':').pop().trim().replace(/number.length !== 12r/g, '');
+                    contactPhone = line.split(':').pop().trim().replace(/\r/g, '');
                 }
             }
             text = `[CONTACT_REF] ${displayName}|${contactPhone}|${vcard}`;
@@ -710,8 +710,8 @@ function renderMessages(messages) {
         </a>`;
     } else if (messageContent.startsWith('[IMAGE_REF] ')) {
         const ref = messageContent.replace('[IMAGE_REF] ', '');
-        const [imgInstance, imgMsgId] = ref.split('number.length !== 12n')[0].split('|');
-        const caption = ref.split('number.length !== 12n')[1] || '';
+        const [imgInstance, imgMsgId] = ref.split('\n')[0].split('|');
+        const caption = ref.split('\n')[1] || '';
         const imgSrc = `${API_URL}/api/media/image?instance=${encodeURIComponent(imgInstance)}&msg_id=${encodeURIComponent(imgMsgId)}&token=${encodeURIComponent(authToken)}`;
         messageContent = `<img src="${imgSrc}" class="msg-image" alt="Imagem" onclick="openLightbox(this.src)" />`;
         if (caption) {
@@ -719,8 +719,8 @@ function renderMessages(messages) {
         }
     } else if (messageContent.startsWith('[VIDEO_REF] ')) {
         const ref = messageContent.replace('[VIDEO_REF] ', '');
-        const [vidInstance, vidMsgId] = ref.split('number.length !== 12n')[0].split('|');
-        const caption = ref.split('number.length !== 12n')[1] || '';
+        const [vidInstance, vidMsgId] = ref.split('\n')[0].split('|');
+        const caption = ref.split('\n')[1] || '';
         const vidSrc = `${API_URL}/api/media/video?instance=${encodeURIComponent(vidInstance)}&msg_id=${encodeURIComponent(vidMsgId)}&token=${encodeURIComponent(authToken)}`;
         messageContent = `<video controls class="msg-video"><source src="${vidSrc}" type="video/mp4">Seu navegador não suporta vídeo.</video>`;
         if (caption) {
@@ -795,7 +795,7 @@ function renderMessages(messages) {
         const parts = ref.split('|');
         const contactName = parts[0] || 'Contato';
         const contactPhone = parts[1] || '';
-        const cleanNumber = contactPhone ? contactPhone.replace(/[^number.length !== 12d]/g, '') : null;
+        const cleanNumber = contactPhone ? contactPhone.replace(/[^\d]/g, '') : null;
         messageContent = `
             <div style="display:flex; align-items:center; gap:12px; padding:12px 14px; background:rgba(255,255,255,0.07); border-radius:12px; border:1px solid rgba(255,255,255,0.12); min-width:200px; max-width:280px;">
                 <div style="width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg,#25D366,#128C7E); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
@@ -813,7 +813,7 @@ function renderMessages(messages) {
                 </button>` : ''}
             </div>`;
     } else {
-        messageContent = escapeHtml(messageContent).replace(/number.length !== 12n/g, '<br>').replace(/number.length !== 12*([^*number.length !== 12n]+)number.length !== 12*/g, '<strong>$1</strong>');
+        messageContent = escapeHtml(messageContent).replace(/\n/g, '<br>').replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>');
     }
 
     el.innerHTML = `
@@ -958,7 +958,7 @@ async function sendMessage() {
     const fullName = userData.name || '';
     const firstName = fullName.split(' ')[0]; // Pega apenas o primeiro nome
     if (firstName) {
-      textToSend = `*${firstName}:*number.length !== 12n${text}`;
+      textToSend = `*${firstName}:*\n${text}`;
     }
   } catch (e) {
     console.warn('[sendMessage] Nao foi possivel obter nome do atendente:', e);
@@ -986,7 +986,7 @@ async function sendMessage() {
   // 2. Envia para o Backend (com prefixo do atendente)
   try {
     // Sanatiza o numero (remove +, space, -, etc)
-    const cleanNumber = currentChat.phone.replace(/number.length !== 12D/g, '');
+    const cleanNumber = currentChat.phone.replace(/\D/g, '');
     
     // Se a instância for mock (inst1, inst2...), tenta pegar uma real
     let targetInstance = currentChat.instance;
@@ -1229,7 +1229,7 @@ async function sendAudioMessage(base64Data) {
       }
     }
 
-    const cleanNumber = currentChat.phone.replace(/number.length !== 12D/g, '');
+    const cleanNumber = currentChat.phone.replace(/\D/g, '');
 
     const response = await fetch(`${API_URL}/api/whatsapp/send-audio`, {
       method: 'POST',
@@ -1296,7 +1296,7 @@ function updateContactDetails(contact) {
     const el = document.createElement('div');
     el.className = 'tag ' + tagColor(tag);
     if (isAdmin) {
-      el.innerHTML = `<span>${escapeHtml(tag)}</span><span style="cursor:pointer;margin-left:6px;opacity:0.7;font-weight:bold" onclick="removeTag('${tag.replace(/'/g, "number.length !== 12number.length !== 12'")}')" title="Remover etiqueta">✕</span>`;
+      el.innerHTML = `<span>${escapeHtml(tag)}</span><span style="cursor:pointer;margin-left:6px;opacity:0.7;font-weight:bold" onclick="removeTag('${tag.replace(/'/g, "\\'")}')" title="Remover etiqueta">✕</span>`;
     } else {
       el.innerHTML = `<span>${escapeHtml(tag)}</span>`;
     }
@@ -1419,11 +1419,11 @@ function addInstance() {
 // ─── Filtering ────────────────────────────────────────────────────────────────
 function filterChats(query) {
   const q = query.toLowerCase().trim();
-  const qDigits = q.replace(/number.length !== 12D/g, ''); // somente dígitos para busca por número
+  const qDigits = q.replace(/\D/g, ''); // somente dígitos para busca por número
   const filtered = CONTACTS.filter(c => {
     const nameMatch = c.name.toLowerCase().includes(q);
     const msgMatch  = (c.lastMsg || '').toLowerCase().includes(q);
-    const phoneMatch = qDigits.length > 0 && (c.phone || '').replace(/number.length !== 12D/g, '').includes(qDigits);
+    const phoneMatch = qDigits.length > 0 && (c.phone || '').replace(/\D/g, '').includes(qDigits);
     return nameMatch || msgMatch || phoneMatch;
   });
   renderChatList(filtered);
@@ -1678,7 +1678,7 @@ async function sendImageMessage(file) {
         }
       }
       
-      const cleanNumber = currentChat.phone.replace(/number.length !== 12D/g, '');
+      const cleanNumber = currentChat.phone.replace(/\D/g, '');
       
       const response = await fetch(`${API_URL}/api/whatsapp/send-image`, {
         method: 'POST',
@@ -1743,7 +1743,7 @@ async function sendVideoMessage(file) {
         }
       }
       
-      const cleanNumber = currentChat.phone.replace(/number.length !== 12D/g, '');
+      const cleanNumber = currentChat.phone.replace(/\D/g, '');
       
       const response = await fetch(`${API_URL}/api/whatsapp/send-video`, {
         method: 'POST',
@@ -1812,7 +1812,7 @@ async function sendDocumentMessage(file) {
     renderChatList(getFilteredContacts());
     
     try {
-      const cleanNumber = currentChat.phone.replace(/number.length !== 12D/g, '');
+      const cleanNumber = currentChat.phone.replace(/\D/g, '');
       
       const response = await fetch(`${API_URL}/api/whatsapp/send-document`, {
         method: 'POST',
@@ -2131,7 +2131,7 @@ function closeNewChatModal() {
 function startNewChat() {
   const numberInput = document.getElementById('newChatNumber');
   const instanceSelect = document.getElementById('newChatInstance');
-  const number = numberInput.value.trim().replace(/number.length !== 12D/g, '');
+  const number = numberInput.value.trim().replace(/\D/g, '');
   const instance = instanceSelect.value;
 
   if (!number || !instance) {
@@ -2139,8 +2139,8 @@ function startNewChat() {
     return;
   }
 
-  if (number.length < 12 || number.length > 14) {
-    showToast('Formato inválido! Insira DDI + DDD + Número (Ex: 5535999888777)');
+  if (number.length !== 12) {
+    showToast('Formato inválido! O número deve ter exatamente 12 dígitos, sem o 9º dígito (Ex: 553588887777)');
     return;
   }
 
@@ -2392,7 +2392,7 @@ async function sendLocationMessage() {
       const lat = position.coords.latitude;
       const lng = position.coords.longitude;
       const targetInstance = currentChat.instanceName || currentChat.instance;
-      const cleanNumber = currentChat.phone.replace(/number.length !== 12D/g, '');
+      const cleanNumber = currentChat.phone.replace(/\D/g, '');
 
       try {
         const response = await fetch(`${API_URL}/api/whatsapp/send-location`, {
@@ -2445,7 +2445,7 @@ function closeSendContactModal() {
 }
 
 function maskPhoneInput(input) {
-  let value = input.value.replace(/number.length !== 12D/g, '');
+  let value = input.value.replace(/\D/g, '');
   if (value.length > 11) value = value.slice(0, 11);
   
   if (value.length > 2) {
@@ -2469,9 +2469,9 @@ async function confirmSendContact() {
   }
 
   const targetInstance = currentChat.instanceName || currentChat.instance;
-  const cleanNumber = currentChat.phone.replace(/number.length !== 12D/g, '');
+  const cleanNumber = currentChat.phone.replace(/\D/g, '');
 
-  let formattedContactPhone = contactPhone.replace(/number.length !== 12D/g, '');
+  let formattedContactPhone = contactPhone.replace(/\D/g, '');
   if (formattedContactPhone.length === 10 || formattedContactPhone.length === 11) {
     formattedContactPhone = '55' + formattedContactPhone;
   }
@@ -2636,7 +2636,7 @@ setTimeout(renderQuickReplies, 1000);
 
 // Helper para abrir modal de nova conversa com número pré-preenchido
 window.showNewChatWithNumber = async function(number) {
-    let cleanNumber = String(number).replace(/number.length !== 12D/g, '');
+    let cleanNumber = String(number).replace(/\D/g, '');
     if (cleanNumber.length === 10 || cleanNumber.length === 11) {
         cleanNumber = '55' + cleanNumber;
     }
