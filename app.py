@@ -1307,6 +1307,28 @@ def send_image():
             res_data = {'message': res.text}
 
         msg_id = extract_waha_msg_id(res_data, f"img_out_{int(now.timestamp())}")
+        
+        # --- NEW CACHING LOGIC ---
+        try:
+            import base64, re
+            media_dir = os.path.join(DATA_DIR, 'media')
+            os.makedirs(media_dir, exist_ok=True)
+            clean_b64 = re.sub(r'[^A-Za-z0-9+/]', '', image_raw)
+            pad_raw = clean_b64 + "=" * ((4 - len(clean_b64) % 4) % 4)
+            short_id = msg_id.split('_')[-1]
+            
+            file_ext = '.jpeg'
+            if 'image/png' in mimetype: file_ext = '.png'
+            elif 'image/webp' in mimetype: file_ext = '.webp'
+            
+            with open(os.path.join(media_dir, msg_id + file_ext), 'wb') as f:
+                f.write(base64.b64decode(pad_raw))
+            with open(os.path.join(media_dir, short_id + file_ext), 'wb') as f:
+                f.write(base64.b64decode(pad_raw))
+        except Exception as e:
+            print(f"[Send Image] Erro ao salvar arquivo local: {e}")
+        # -------------------------
+
         text = f"[IMAGE_REF] {inst}|{msg_id}"
         if caption:
             text += f"\n{caption}"
@@ -1375,6 +1397,26 @@ def send_video():
             res_data = {'message': res.text}
 
         msg_id = extract_waha_msg_id(res_data, f"vid_out_{int(now.timestamp())}")
+        
+        # --- NEW CACHING LOGIC ---
+        try:
+            import base64, re
+            media_dir = os.path.join(DATA_DIR, 'media')
+            os.makedirs(media_dir, exist_ok=True)
+            clean_b64 = re.sub(r'[^A-Za-z0-9+/]', '', video_raw)
+            pad_raw = clean_b64 + "=" * ((4 - len(clean_b64) % 4) % 4)
+            short_id = msg_id.split('_')[-1]
+            
+            file_ext = '.mp4'
+            
+            with open(os.path.join(media_dir, msg_id + file_ext), 'wb') as f:
+                f.write(base64.b64decode(pad_raw))
+            with open(os.path.join(media_dir, short_id + file_ext), 'wb') as f:
+                f.write(base64.b64decode(pad_raw))
+        except Exception as e:
+            print(f"[Send Video] Erro ao salvar arquivo local: {e}")
+        # -------------------------
+
         text = f"[VIDEO_REF] {inst}|{msg_id}"
         if caption:
             text += f"\n{caption}"
@@ -3057,10 +3099,13 @@ def stream_media(media_type):
         
         cache_path = None
         # Tentar com e sem extensão para retrocompatibilidade e arquivos novos
-        for p in [local_path + '.webm', local_path + '.ogg', local_path, 
-                  local_path_short + '.webm', local_path_short + '.ogg', local_path_short]:
-            if os.path.exists(p):
-                cache_path = p
+        exts = ['.webm', '.ogg', '.jpeg', '.jpg', '.png', '.webp', '.mp4', '']
+        for ext in exts:
+            if os.path.exists(local_path + ext):
+                cache_path = local_path + ext
+                break
+            if os.path.exists(local_path_short + ext):
+                cache_path = local_path_short + ext
                 break
             
         if cache_path:
