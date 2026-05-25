@@ -150,6 +150,12 @@ def normalize_br_phone(phone_str):
     p = "".join(filter(str.isdigit, p))
     return p
 
+def extract_waha_msg_id(res_data, fallback):
+    m_id = res_data.get('id')
+    if isinstance(m_id, dict):
+        m_id = m_id.get('id')
+    return m_id or res_data.get('key', {}).get('id') or res_data.get('messageId') or fallback
+
 def get_media_base64(instance, msg_data):
     try:
         msg_id = msg_data.get('id')
@@ -1074,7 +1080,7 @@ def send_message():
             print(f"[SEND] ERRO WAHA API: {error_msg}")
             return jsonify({'error': f'WAHA API erro: {error_msg}'}), res.status_code
         
-        msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"out_{int(now.timestamp())}"
+        msg_id = extract_waha_msg_id(res_data, f"out_{int(now.timestamp())}")
         contact_id = f"c_{number}_{inst}"
         
         # Atualizar ou Criar Contato
@@ -1206,7 +1212,7 @@ def send_audio():
             res_data = {'message': res.text}
         print(f"[Send Audio] Resposta: status={res.status_code} body={json.dumps(res_data)[:300]}")
 
-        msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"audio_out_{int(now.timestamp())}"
+        msg_id = extract_waha_msg_id(res_data, f"audio_out_{int(now.timestamp())}")
         text = f"[AUDIO_REF] {inst}|{msg_id}"
 
         contact_id = f"c_{number}_{inst}"
@@ -1276,7 +1282,7 @@ def send_image():
         except Exception:
             res_data = {'message': res.text}
 
-        msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"img_out_{int(now.timestamp())}"
+        msg_id = extract_waha_msg_id(res_data, f"img_out_{int(now.timestamp())}")
         text = f"[IMAGE_REF] {inst}|{msg_id}"
         if caption:
             text += f"\n{caption}"
@@ -1344,7 +1350,7 @@ def send_video():
         except Exception:
             res_data = {'message': res.text}
 
-        msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"vid_out_{int(now.timestamp())}"
+        msg_id = extract_waha_msg_id(res_data, f"vid_out_{int(now.timestamp())}")
         text = f"[VIDEO_REF] {inst}|{msg_id}"
         if caption:
             text += f"\n{caption}"
@@ -1414,7 +1420,7 @@ def send_document():
         except Exception:
             res_data = {'message': res.text}
 
-        msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"doc_out_{int(now.timestamp())}"
+        msg_id = extract_waha_msg_id(res_data, f"doc_out_{int(now.timestamp())}")
         text = f"[DOC_REF] {inst}|{msg_id}|{doc_name}"
 
         contact_id = f"c_{number}_{inst}"
@@ -1476,7 +1482,7 @@ def send_location():
         except Exception:
             res_data = {'message': res.text}
 
-        msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"loc_out_{int(now.timestamp())}"
+        msg_id = extract_waha_msg_id(res_data, f"loc_out_{int(now.timestamp())}")
         
         text = f"[LOCATION_REF] {latitude}|{longitude}|{name}|{address}"
 
@@ -1570,7 +1576,7 @@ def send_contact():
             res_data = {'message': res.text}
         print(f"[Send Contact] Resposta: status={res.status_code} body={json.dumps(res_data)[:300]}")
 
-        msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"contact_out_{int(now.timestamp())}"
+        msg_id = extract_waha_msg_id(res_data, f"contact_out_{int(now.timestamp())}")
         text = f"[CONTACT_REF] {contact_name}|+{contact_phone}|{vcard}"
 
         contact_id = f"c_{number}_{inst}"
