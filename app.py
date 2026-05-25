@@ -1895,6 +1895,18 @@ def webhook():
             fromMe = payload.get('fromMe', False)
             body = payload.get('body', '')
             msg_type = payload.get('type', 'chat')
+            
+            # Inferir tipo de mídia pelo mimetype se necessário
+            if payload.get('hasMedia') and msg_type in ('chat', None, ''):
+                mimetype = payload.get('media', {}).get('mimetype', '')
+                if mimetype.startswith('audio/'):
+                    msg_type = 'audio'
+                elif mimetype.startswith('image/'):
+                    msg_type = 'image'
+                elif mimetype.startswith('video/'):
+                    msg_type = 'video'
+                else:
+                    msg_type = 'document'
 
             evo_data = {
                 "event": "messages.upsert",
