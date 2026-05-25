@@ -3191,25 +3191,34 @@ def stream_media(media_type):
             cd = 'inline' if media_type in ('audio', 'image', 'video', 'document') else 'attachment'
             return Response(file_bytes, mimetype=content_type, headers={'Content-Disposition': cd, 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=3600'})
 
-        # Tentar usar apenas o ID curto (final) porque o NOWEB usa o ID curto no /api/files
         short_id = msg_id.split('_')[-1]
         
-        waha_url = f"{WAHA_API_URL}/api/files?session={instance}&messageId={short_id}"
-        print(f"[{media_type.capitalize()} Proxy] Buscando {media_type}: instance={instance} msg_id={short_id}")
-        res = requests.get(waha_url, headers=get_waha_headers(), timeout=15)
-        
-        # Fallback para o ID longo caso a engine espere o longo
-        if res.status_code == 404:
-            print(f"[{media_type.capitalize()} Proxy] Arquivo não encontrado pelo ID curto. Tentando ID longo...")
-            waha_url_long = f"{WAHA_API_URL}/api/files?session={instance}&messageId={msg_id}"
-            res = requests.get(waha_url_long, headers=get_waha_headers(), timeout=15)
+        try:
+            # 1. Tentar primeiro com o ID completo (Motor Baileys)
+            params = {'session': instance, 'messageId': msg_id}
+            waha_url_1 = f"{WAHA_API_URL}/api/files"
+            print(f"[{media_type.capitalize()} Proxy] Buscando {media_type} no WAHA: msg_id={msg_id}")
+            res = requests.get(waha_url_1, headers=get_waha_headers(), params=params, timeout=10)
             
-        # Fallback 3 para NOWEB: Arquivo direto com extensão
-        if res.status_code == 404:
-            ext = 'oga' if media_type == 'audio' else ('jpeg' if media_type == 'image' else 'mp4')
-            print(f"[{media_type.capitalize()} Proxy] Tentando URL direta do NOWEB: {short_id}.{ext}")
-            waha_url_direct = f"{WAHA_API_URL}/api/files/{instance}/{short_id}.{ext}"
-            res = requests.get(waha_url_direct, headers=get_waha_headers(), timeout=15)
+            # 2. Se falhar, tenta com o ID curto (NOWEB fallback)
+            if res.status_code == 404 and short_id != msg_id:
+                print(f"[{media_type.capitalize()} Proxy] Arquivo não encontrado pelo ID longo. Tentando curto: {short_id}")
+                params['messageId'] = short_id
+                res = requests.get(waha_url_1, headers=get_waha_headers(), params=params, timeout=10)
+                
+            # 3. Fallback 3 para NOWEB antigo: Arquivo direto
+            if res.status_code == 404:
+                ext = 'oga' if media_type == 'audio' else ('jpeg' if media_type == 'image' else 'mp4')
+                print(f"[{media_type.capitalize()} Proxy] Tentando URL direta do NOWEB: {short_id}.{ext}")
+                waha_url_direct = f"{WAHA_API_URL}/api/files/{instance}/{short_id}.{ext}"
+                res = requests.get(waha_url_direct, headers=get_waha_headers(), timeout=10)
+                
+        except requests.exceptions.Timeout:
+            print(f"[{media_type.capitalize()} Proxy] TIMEOUT ao buscar {msg_id} no WAHA.")
+            return jsonify({'error': 'Timeout ao buscar arquivo no servidor WAHA. O WhatsApp demorou muito para responder.'}), 504
+        except Exception as e:
+            print(f"[{media_type.capitalize()} Proxy] ERRO de conexão com WAHA: {e}")
+            return jsonify({'error': f'Erro ao conectar ao WAHA: {e}'}), 502
 
         print(f"[{media_type.capitalize()} Proxy] status={res.status_code} resp_len={len(res.content)}")
         
