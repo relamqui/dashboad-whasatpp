@@ -1053,7 +1053,10 @@ def send_message():
         res = requests.post(url, json=payload, headers=get_waha_headers(), timeout=30)
         print(f"[SEND] Response status: {res.status_code}")
         print(f"[SEND] Response body: {res.text[:300]}")
-        res_data = res.json()
+        try:
+            res_data = res.json()
+        except Exception:
+            res_data = {'message': res.text}
         
         # Verificar se a API retornou erro
         if res.status_code != 200 and res.status_code != 201:
@@ -1187,7 +1190,10 @@ def send_audio():
         }
         print(f"[Send Audio] Enviando audio para {number} via {inst}")
         res = requests.post(url, json=payload, headers=get_waha_headers(), timeout=30)
-        res_data = res.json()
+        try:
+            res_data = res.json()
+        except Exception:
+            res_data = {'message': res.text}
         print(f"[Send Audio] Resposta: status={res.status_code} body={json.dumps(res_data)[:300]}")
 
         msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"audio_out_{int(now.timestamp())}"
@@ -1255,7 +1261,10 @@ def send_image():
             }
         }
         res = requests.post(url, json=payload, headers=get_waha_headers(), timeout=30)
-        res_data = res.json()
+        try:
+            res_data = res.json()
+        except Exception:
+            res_data = {'message': res.text}
 
         msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"img_out_{int(now.timestamp())}"
         text = f"[IMAGE_REF] {inst}|{msg_id}"
@@ -1320,7 +1329,10 @@ def send_video():
             }
         }
         res = requests.post(url, json=payload, headers=get_waha_headers(), timeout=60)
-        res_data = res.json()
+        try:
+            res_data = res.json()
+        except Exception:
+            res_data = {'message': res.text}
 
         msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"vid_out_{int(now.timestamp())}"
         text = f"[VIDEO_REF] {inst}|{msg_id}"
@@ -1387,7 +1399,10 @@ def send_document():
             }
         }
         res = requests.post(url, json=payload, headers=get_waha_headers(), timeout=60)
-        res_data = res.json()
+        try:
+            res_data = res.json()
+        except Exception:
+            res_data = {'message': res.text}
 
         msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"doc_out_{int(now.timestamp())}"
         text = f"[DOC_REF] {inst}|{msg_id}|{doc_name}"
@@ -1446,7 +1461,10 @@ def send_location():
         }
         res = requests.post(url, json=payload, headers=get_waha_headers(), timeout=60)
         res.raise_for_status()
-        res_data = res.json()
+        try:
+            res_data = res.json()
+        except Exception:
+            res_data = {'message': res.text}
 
         msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"loc_out_{int(now.timestamp())}"
         
@@ -1536,7 +1554,10 @@ def send_contact():
         }
         print(f"[Send Contact] Enviando contato '{contact_name}' ({contact_phone}) para {number} via {inst}")
         res = requests.post(url, json=payload, headers=get_waha_headers(), timeout=30)
-        res_data = res.json()
+        try:
+            res_data = res.json()
+        except Exception:
+            res_data = {'message': res.text}
         print(f"[Send Contact] Resposta: status={res.status_code} body={json.dumps(res_data)[:300]}")
 
         msg_id = res_data.get('id') or res_data.get('key', {}).get('id') or res_data.get('messageId') or f"contact_out_{int(now.timestamp())}"
