@@ -122,6 +122,7 @@ class Message(db_sql.Model):
     time = db_sql.Column(db_sql.String(20), nullable=False)
     timestamp = db_sql.Column(db_sql.BigInteger, nullable=False)
     instance = db_sql.Column(db_sql.String(100), nullable=True)
+    ack = db_sql.Column(db_sql.Integer, default=0, nullable=True)
 
 class Setting(db_sql.Model):
     key = db_sql.Column(db_sql.String(50), primary_key=True)
@@ -303,6 +304,12 @@ def migrate_to_sql():
             
         try:
             db_sql.session.execute(db_sql.text('ALTER TABLE message ALTER COLUMN time TYPE VARCHAR(20)'))
+            db_sql.session.commit()
+        except Exception:
+            db_sql.session.rollback()
+            
+        try:
+            db_sql.session.execute(db_sql.text('ALTER TABLE message ADD COLUMN ack INTEGER DEFAULT 0'))
             db_sql.session.commit()
         except Exception:
             db_sql.session.rollback()
@@ -2079,6 +2086,26 @@ def webhook():
             payload = data.get('payload', {})
             
             if waha_event == 'message.ack':
+                ack_val = payload.get('ack', 0)
+                ack_name = payload.get('ackName', '')
+                waha_id = payload.get('id', '')
+                
+                # Tenta atualizar no BD
+                msg_obj = Message.query.get(waha_id)
+                if msg_obj:
+                    msg_obj.ack = ack_val
+                    db_sql.session.commit()
+                
+                # Emitir socket para a interface
+                ack_data = {
+                    'event': 'message.ack',
+                    'instance': session,
+                    'messageId': waha_id,
+                    'ack': ack_val,
+                    'ackName': ack_name
+                }
+                socketio.emit('whatsapp_ack', ack_data, room=f'instance_{session}')
+                socketio.emit('whatsapp_ack', ack_data, room='admin')
                 return 'OK', 200
             waha_id = payload.get('id', '')
             waha_from = payload.get('from', '')
@@ -2711,7 +2738,8 @@ def get_messages(id):
             'text': m.text,
             'type': m.type,
             'time': m.time,
-            'timestamp': m.timestamp
+            'timestamp': m.timestamp,
+            'ack': m.ack if m.ack is not None else 2
         })
     return jsonify(msgs_list)
 

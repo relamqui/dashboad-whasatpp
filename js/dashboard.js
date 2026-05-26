@@ -205,6 +205,28 @@ function initSocket(token) {
       handleIncomingWebhook(data);
     });
 
+    socket.on('whatsapp_ack', (data) => {
+      console.log('Ack recebido:', data);
+      // Atualizar msg object em CONTACTS
+      let found = false;
+      for (const contact of CONTACTS) {
+        if (!contact.messages) continue;
+        const msg = contact.messages.find(m => m.id === data.messageId);
+        if (msg) {
+          msg.ack = data.ack;
+          found = true;
+          break;
+        }
+      }
+      // Se a mensagem estiver no currentChat renderizado, atualiza
+      if (found && currentChat && currentChat.messages) {
+        const chatMsg = currentChat.messages.find(m => m.id === data.messageId);
+        if (chatMsg) {
+            renderMessages(currentChat.messages);
+        }
+      }
+    });
+
     socket.on('chat_assignment', (data) => {
       handleChatAssignment(data);
     });
@@ -686,8 +708,23 @@ function renderMessages(messages) {
     const el = document.createElement('div');
     el.className = `message ${msg.type === 'in' ? 'incoming' : 'outgoing'} ${isBot ? 'bot-message' : ''}`;
 
-    const ticks = msg.type === 'out'
-      ? `<span class="msg-ticks">✓✓</span>` : '';
+    let ticks = '';
+    if (msg.type === 'out') {
+      const ack = msg.ack !== undefined ? msg.ack : 2; // Padrão antigo 2
+      if (ack === 0) {
+        ticks = `<span class="msg-ticks" style="color: #999;" title="Pendente"><i class="far fa-clock"></i></span>`;
+      } else if (ack === 1) {
+        ticks = `<span class="msg-ticks" style="color: #999;" title="Enviado">✓</span>`;
+      } else if (ack === 2) {
+        ticks = `<span class="msg-ticks" style="color: #999;" title="Entregue">✓✓</span>`;
+      } else if (ack === 3 || ack === 4) {
+        ticks = `<span class="msg-ticks" style="color: #34B7F1;" title="Lido">✓✓</span>`;
+      } else if (ack === -1) {
+        ticks = `<span class="msg-ticks" style="color: #f44336;" title="Erro"><i class="fas fa-exclamation-circle"></i></span>`;
+      } else {
+        ticks = `<span class="msg-ticks" style="color: #999;">✓✓</span>`;
+      }
+    }
 
     const botLabel = isBot ? `<div class="bot-label">🤖 Respondido pelo Bot</div>` : '';
 
@@ -2140,8 +2177,8 @@ function startNewChat() {
     return;
   }
 
-  if (number.length !== 12 && number.length !== 13) {
-    showToast('Formato inválido! O número deve ter 12 ou 13 dígitos com DDI+DDD (Ex: 553588887777 ou 5535988887777)');
+  if (number.length !== 12) {
+    showToast('Formato inválido! O número deve ter exatamente 12 dígitos, sem o 9º dígito (Ex: 553588887777)');
     return;
   }
 
