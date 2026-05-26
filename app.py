@@ -2090,17 +2090,28 @@ def webhook():
                 ack_name = payload.get('ackName', '')
                 waha_id = payload.get('id', '')
                 
+                # WAHA costuma enviar "false_numero@c.us_HASH" no message.ack
+                db_msg_id = waha_id
+                if waha_id and '_' in waha_id:
+                    db_msg_id = waha_id.split('_')[-1]
+                
                 # Tenta atualizar no BD
-                msg_obj = Message.query.get(waha_id)
+                msg_obj = Message.query.get(db_msg_id)
+                if not msg_obj:
+                    # Fallback pro id completo caso tenha sido salvo assim
+                    msg_obj = Message.query.get(waha_id)
+                    if msg_obj:
+                        db_msg_id = waha_id
+                        
                 if msg_obj:
                     msg_obj.ack = ack_val
                     db_sql.session.commit()
                 
-                # Emitir socket para a interface
+                # Emitir socket para a interface com o ID real
                 ack_data = {
                     'event': 'message.ack',
                     'instance': session,
-                    'messageId': waha_id,
+                    'messageId': db_msg_id,
                     'ack': ack_val,
                     'ackName': ack_name
                 }
