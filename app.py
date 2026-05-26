@@ -1923,8 +1923,8 @@ import time
 
 # ─── Monitor de Tempo de Espera ─────────────────────────────────────────────
 
-WEBHOOK_CHAMAR_URL = 'https://n8n-n8n.ioms5g.easypanel.host/webhook/chamar'
-WEBHOOK_CHAMAR_GERENTE_URL = 'https://n8n-n8n.ioms5g.easypanel.host/webhook/chamar-gerente'
+WEBHOOK_CHAMAR_URL = 'https://n8n-n8n.ioms5g.easypanel.host/webhook/alerta-tempo'
+WEBHOOK_CHAMAR_GERENTE_URL = 'https://n8n-n8n.ioms5g.easypanel.host/webhook/alerta-tempo'
 
 def wait_time_monitor_loop():
     """Thread em background que monitora clientes aguardando atendimento.
