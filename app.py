@@ -2532,11 +2532,11 @@ def create_contact():
     if not phone or not instance:
         return jsonify({'error': 'Telefone e Instância são obrigatórios'}), 400
         
-    clean_phone = "".join(filter(str.isdigit, str(phone).strip()))
-    if len(clean_phone) < 12 or len(clean_phone) > 14:
+    # Normaliza ANTES de validar o tamanho para evitar rejeitar números válidos
+    phone = normalize_br_phone(str(phone).strip())
+    if len(phone) < 12 or len(phone) > 13:
         return jsonify({'error': 'Formato inválido! Insira DDI + DDD + Número (Ex: 5535999888777)'}), 400
         
-    phone = normalize_br_phone(str(phone).strip())
     contact_id = f"c_{phone}_{instance}"
     
     contact = Contact.query.filter_by(id=contact_id).first()
@@ -2553,6 +2553,12 @@ def create_contact():
             unread=0
         )
         db_sql.session.add(contact)
+    else:
+        # Contato já existe — remove tag BOT para o atendente assumir o controle
+        current_tags = list(contact.tags or [])
+        current_tags = [t for t in current_tags if isinstance(t, str) and t.strip().upper() != 'BOT']
+        contact.tags = current_tags
+        flag_modified(contact, 'tags')
     
     user = User.query.get(request.user['id'])
     contact.assigned_to = user.id
