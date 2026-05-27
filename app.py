@@ -2170,35 +2170,37 @@ def webhook():
                     msg_type = 'contact'
 
             # --- DOWNLOAD AUTOMÁTICO DE MEDIA DA PAYLOAD DO WAHA ---
-            if payload.get('hasMedia') and 'media' in payload:
+            # Sempre forçar download se for mídia (mesmo que a payload.media não venha completa)
+            if payload.get('hasMedia') or msg_type in ('image', 'video', 'document', 'audio', 'ptt', 'voice'):
+                media_dir = os.path.join(DATA_DIR, 'media')
+                os.makedirs(media_dir, exist_ok=True)
+                short_id = waha_id.split('_')[-1] if '_' in waha_id else waha_id
+                
+                ext = ''
+                if msg_type == 'image': ext = '.jpeg'
+                elif msg_type in ('audio', 'voice', 'ptt'): ext = '.oga'
+                elif msg_type == 'video': ext = '.mp4'
+                elif msg_type == 'document': ext = '.pdf'
+                
+                filepath = os.path.join(media_dir, f"{short_id}{ext}")
+                
                 media_info = payload.get('media', {})
                 media_url = media_info.get('url')
                 media_b64 = media_info.get('data')
-                
-                if media_url or media_b64:
-                    media_dir = os.path.join(DATA_DIR, 'media')
-                    os.makedirs(media_dir, exist_ok=True)
-                    # waha_id pode ter prefixos, tentar extrair o hash para o nome do arquivo
-                    short_id = waha_id.split('_')[-1] if '_' in waha_id else waha_id
-                    
-                    # Descobrir a extensao
-                    ext = ''
-                    if msg_type == 'image': ext = '.jpeg'
-                    elif msg_type in ('audio', 'voice', 'ptt'): ext = '.oga'
-                    elif msg_type == 'video': ext = '.mp4'
-                    elif msg_type == 'document': ext = '.pdf'
-                    
-                    filepath = os.path.join(media_dir, f"{short_id}{ext}")
-                    
+
+                # Baixar e salvar o arquivo se ele ainda não existir localmente
+                if not os.path.exists(filepath):
+                    saved_locally = False
                     try:
                         if media_b64:
                             import base64
                             with open(filepath, 'wb') as f:
                                 f.write(base64.b64decode(media_b64))
+                            saved_locally = True
                             print(f"[Media] Arquivo {filepath} salvo localmente via Base64 do webhook")
                         elif media_url:
                             # Corrige URL caso venha localhost
-                            if media_url.startswith('http://localhost'):
+                            if media_url.startswith('http://localhost') or media_url.startswith('http://127.0.0.1'):
                                 from urllib.parse import urlparse
                                 parsed = urlparse(media_url)
                                 media_url = f"{WAHA_API_URL}{parsed.path}?{parsed.query}" if parsed.query else f"{WAHA_API_URL}{parsed.path}"
@@ -2207,11 +2209,49 @@ def webhook():
                             if dl_res.status_code == 200:
                                 with open(filepath, 'wb') as f:
                                     f.write(dl_res.content)
+                                saved_locally = True
                                 print(f"[Media] Arquivo {filepath} salvo localmente via URL {media_url} do webhook")
                             else:
                                 print(f"[Media] Falha ao baixar da URL {media_url}: HTTP {dl_res.status_code}")
                     except Exception as e:
-                        print(f"[Media] Erro ao salvar media: {e}")
+                        print(f"[Media] Erro ao salvar media via payload: {e}")
+                        
+                    # Fallback Agressivo: Se falhou ao salvar pela payload, forçar busca via GET /api/files
+                    if not saved_locally and not os.path.exists(filepath):
+                        try:
+                            waha_url_1 = f"{WAHA_API_URL}/api/files"
+                            dl_res = requests.get(waha_url_1, headers=get_waha_headers(), params={'session': session, 'messageId': waha_id}, timeout=15)
+                            
+                            # Tentar fallback com id curto
+                            if dl_res.status_code == 404 and short_id != waha_id:
+                                dl_res = requests.get(waha_url_1, headers=get_waha_headers(), params={'session': session, 'messageId': short_id}, timeout=15)
+                                
+                            if dl_res.status_code == 200:
+                                file_bytes = dl_res.content
+                                ctype = dl_res.headers.get('Content-Type', '')
+                                if 'application/json' in ctype:
+                                    import base64, re
+                                    json_data = dl_res.json()
+                                    if 'data' in json_data:
+                                        raw = json_data['data']
+                                        raw = re.sub(r'[^A-Za-z0-9+/]', '', raw)
+                                        raw += "=" * ((4 - len(raw) % 4) % 4)
+                                        file_bytes = base64.b64decode(raw)
+                                    elif 'url' in json_data:
+                                        real_url = json_data['url']
+                                        if real_url.startswith('http://localhost') or real_url.startswith('http://127.0.0.1'):
+                                            from urllib.parse import urlparse
+                                            real_url = f"{WAHA_API_URL}{urlparse(real_url).path}"
+                                        real_res = requests.get(real_url, headers=get_waha_headers(), timeout=15)
+                                        if real_res.status_code == 200:
+                                            file_bytes = real_res.content
+                                with open(filepath, 'wb') as f:
+                                    f.write(file_bytes)
+                                print(f"[Media] Arquivo {filepath} salvo via FALLBACK Agressivo (GET /api/files)")
+                            else:
+                                print(f"[Media] FALLBACK Agressivo falhou: HTTP {dl_res.status_code}")
+                        except Exception as e:
+                            print(f"[Media] Erro no FALLBACK Agressivo: {e}")
             # -------------------------------------------------------
 
             # --- Normalizar JID para 12 dígitos ---
