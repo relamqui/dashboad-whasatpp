@@ -2427,7 +2427,7 @@ def webhook():
                                 "is_first_time": False,
                                 "request_id": req.id
                             }
-                            requests.post("https://n8n-n8n.ioms5g.easypanel.host/webhook/atendido", json=n8n_payload, timeout=5)
+                            requests.post("https://n8n-n8n.ioms5g.easypanel.host/webhook/chamar-atendente-solicitado", json=n8n_payload, timeout=5)
                         except Exception as e:
                             print(f"Erro N8N atendido: {e}")
                             
@@ -2879,6 +2879,14 @@ def create_contact_request():
     atend_chat = AtendimentoChat.query.filter_by(numero=phone).first()
     if atend_chat and atend_chat.status == 'atendente' and atend_chat.atendente != user.name:
         return jsonify({'error': f'Este número já está em atendimento por {atend_chat.atendente}.'}), 403
+        
+    # Verificar se já existe uma solicitação pendente para este número
+    existing_req = ContactRequest.query.filter_by(phone=phone, status='PENDING').first()
+    if existing_req:
+        if existing_req.attendant_name != user.name:
+            return jsonify({'error': f'Este número já possui uma solicitação pendente pelo atendente {existing_req.attendant_name}.'}), 403
+        else:
+            return jsonify({'error': 'Você já possui uma solicitação pendente para este número.'}), 403
         
     # 2. Criar a solicitação
     _f = Filial.query.get(user.filial_id) if user.filial_id else None

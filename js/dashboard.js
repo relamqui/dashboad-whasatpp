@@ -2229,7 +2229,11 @@ function startNewChat() {
     loadContactRequests(); // Atualiza a tabela com a nova requisição
   })
   .catch(err => {
-    showToast(err.message || 'Erro de conexão ao enviar solicitação.');
+    if (err.message.includes('solicitação pendente') || err.message.includes('em atendimento')) {
+      alert(err.message);
+    } else {
+      showToast(err.message || 'Erro de conexão ao enviar solicitação.');
+    }
   });
 }
 
