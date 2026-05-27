@@ -14,6 +14,18 @@ let emojiVisible = false;
 
 // INSTANCES e EMOJIS estão definidos em data.js como let
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function getDefaultInstance() {
+    if (window.instancesList && window.instancesList.length > 0) {
+        return window.instancesList[0].name;
+    }
+    const user = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
+    if (user.instances && user.instances.length > 0) {
+        return user.instances[0];
+    }
+    return null;
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   // checkAuth(); // Replaced by window.onload
@@ -1049,10 +1061,8 @@ async function sendMessage() {
     let targetInstance = currentChat.instance;
     if (targetInstance.startsWith('inst')) {
        // Busca primeiro nome de instância real que o usuário tem
-       const user = JSON.parse(localStorage.getItem('wp_crm_user'));
-       if (user.instances && user.instances.length > 0) {
-         targetInstance = user.instances[0]; // Usa a primeira vinculada
-       } else {
+       targetInstance = getDefaultInstance();
+       if (!targetInstance) {
          throw new Error('Nenhuma instância do WhatsApp vinculada a este usuário.');
        }
     }
@@ -1281,10 +1291,8 @@ async function sendAudioMessage(base64Data) {
   try {
     let targetInstance = currentChat.instance;
     if (targetInstance.startsWith('inst')) {
-      const user = JSON.parse(localStorage.getItem('wp_crm_user'));
-      if (user.instances && user.instances.length > 0) {
-        targetInstance = user.instances[0];
-      } else {
+      targetInstance = getDefaultInstance();
+      if (!targetInstance) {
         throw new Error('Nenhuma instância vinculada.');
       }
     }
@@ -1730,10 +1738,8 @@ async function sendImageMessage(file) {
     try {
       let targetInstance = currentChat.instance;
       if (targetInstance.startsWith('inst')) {
-        const user = JSON.parse(localStorage.getItem('wp_crm_user'));
-        if (user.instances && user.instances.length > 0) {
-          targetInstance = user.instances[0];
-        } else {
+        targetInstance = getDefaultInstance();
+        if (!targetInstance) {
           throw new Error('Nenhuma instância vinculada.');
         }
       }
@@ -1795,10 +1801,8 @@ async function sendVideoMessage(file) {
     try {
       let targetInstance = currentChat.instance;
       if (targetInstance.startsWith('inst')) {
-        const user = JSON.parse(localStorage.getItem('wp_crm_user'));
-        if (user.instances && user.instances.length > 0) {
-          targetInstance = user.instances[0];
-        } else {
+        targetInstance = getDefaultInstance();
+        if (!targetInstance) {
           throw new Error('Nenhuma instância vinculada.');
         }
       }
@@ -1852,10 +1856,8 @@ async function sendDocumentMessage(file) {
     // Resolve instância antes para poder montar o DOC_REF temporário
     let targetInstance = currentChat.instance;
     if (targetInstance.startsWith('inst')) {
-      const user = JSON.parse(localStorage.getItem('wp_crm_user'));
-      if (user.instances && user.instances.length > 0) {
-        targetInstance = user.instances[0];
-      } else {
+      targetInstance = getDefaultInstance();
+      if (!targetInstance) {
         showToast('Nenhuma instância vinculada.');
         return;
       }
@@ -2190,12 +2192,7 @@ function startNewChat() {
   // Verifica se há instância selecionada ou pega a primeira do usuário
   let inst = currentInstance;
   if (!inst || inst === 'all') {
-      const user = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
-      if (user.instances && user.instances.length > 0) {
-          inst = user.instances[0];
-      } else if (window.instancesList && window.instancesList.length > 0) {
-          inst = window.instancesList[0].name;
-      }
+      inst = getDefaultInstance();
   }
   
   if (!inst) {
