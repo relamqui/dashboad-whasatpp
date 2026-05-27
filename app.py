@@ -1119,10 +1119,7 @@ def get_instances():
         
         if request.user.get('role') != 'admin':
             user = User.query.get(request.user['id'])
-            if user.role == 'gestor':
-                allowed = get_gestor_allowed_instances(user)
-            else:
-                allowed = set(user.instances or [])
+            allowed = get_gestor_allowed_instances(user)
             all_inst = [i for i in all_inst if (i.get('name') or i.get('instanceName')) in allowed]
             
         return jsonify(all_inst)
@@ -1145,7 +1142,7 @@ def send_message():
     # --- Instance permission check ---
     if request.user.get('role') != 'admin':
         user_obj_check = User.query.get(request.user['id'])
-        allowed = user_obj_check.instances or []
+        allowed = get_gestor_allowed_instances(user_obj_check)
         if inst not in allowed:
             return jsonify({'error': 'Você não tem permissão para enviar mensagens nesta instância.'}), 403
 
@@ -1764,7 +1761,7 @@ def send_contact():
     # --- Instance permission check ---
     if request.user.get('role') != 'admin':
         user_obj_check = User.query.get(request.user['id'])
-        allowed = user_obj_check.instances or []
+        allowed = get_gestor_allowed_instances(user_obj_check)
         if inst not in allowed:
             return jsonify({'error': 'Você não tem permissão para enviar mensagens nesta instância.'}), 403
 
@@ -2580,7 +2577,7 @@ def webhook():
 @auth_required
 def get_contacts():
     user = User.query.get(request.user['id'])
-    allowed_instances = user.instances or []
+    allowed_instances = get_gestor_allowed_instances(user)
     
     if request.user.get('role') == 'admin':
         # Admin vê todos os chats
@@ -2590,15 +2587,7 @@ def get_contacts():
         if allowed_instances:
             contacts = Contact.query.filter(Contact.instance.in_(allowed_instances)).all()
         else:
-            # Se não tem instância, tentar derivar da filial
-            if user.filial_id:
-                filial = Filial.query.get(user.filial_id)
-                if filial and filial.instance:
-                    contacts = Contact.query.filter(Contact.instance == filial.instance).all()
-                else:
-                    contacts = []
-            else:
-                contacts = []
+            contacts = []
         
         # Filtrar por tags de filial:setor conforme cargo
         if user.role == 'gestor':
