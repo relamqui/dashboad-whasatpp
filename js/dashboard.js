@@ -2187,14 +2187,19 @@ function startNewChat() {
     return;
   }
 
-  // Verifica se há instância selecionada (ou tenta pegar a primeira disponível)
+  // Verifica se há instância selecionada ou pega a primeira do usuário
   let inst = currentInstance;
-  if (!inst && window.instancesList && window.instancesList.length > 0) {
-      inst = window.instancesList[0].name;
+  if (!inst) {
+      const user = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
+      if (user.instances && user.instances.length > 0) {
+          inst = user.instances[0];
+      } else if (window.instancesList && window.instancesList.length > 0) {
+          inst = window.instancesList[0].name;
+      }
   }
   
   if (!inst) {
-      showToast('Nenhuma instância selecionada para enviar a mensagem.');
+      showToast('Nenhuma instância selecionada ou vinculada ao seu usuário para enviar a mensagem.');
       return;
   }
 
