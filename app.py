@@ -2233,18 +2233,36 @@ def webhook():
                 }
             }
             
+            media_b64 = ''
+            waha_media_url = ''
+            public_media_url = ''
+            if payload.get('hasMedia') and 'media' in payload:
+                media_info = payload.get('media', {})
+                media_b64 = media_info.get('data', '')
+                waha_media_url = media_info.get('url', '')
+                if waha_media_url.startswith('http://localhost'):
+                    from urllib.parse import urlparse
+                    parsed = urlparse(waha_media_url)
+                    waha_media_url = f"{WAHA_API_URL}{parsed.path}?{parsed.query}" if parsed.query else f"{WAHA_API_URL}{parsed.path}"
+                try:
+                    media_token = jwt.encode({'media_access': True, 'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)}, JWT_SECRET, algorithm="HS256")
+                    public_media_url = f"{request.host_url.rstrip('/')}/api/media/audio?instance={session}&msg_id={waha_id}&token={media_token}"
+                except Exception:
+                    pass
+
             if payload.get('hasMedia') or msg_type in ('image', 'video', 'document', 'audio', 'ptt', 'voice'):
+                base_media_data = {"base64": media_b64, "wahaUrl": waha_media_url}
                 if msg_type == 'image':
-                    evo_data['data']['message']['imageMessage'] = {"caption": body}
+                    evo_data['data']['message']['imageMessage'] = {"caption": body, "url": public_media_url.replace('/audio?', '/image?'), **base_media_data}
                 elif msg_type == 'video':
-                    evo_data['data']['message']['videoMessage'] = {"caption": body}
+                    evo_data['data']['message']['videoMessage'] = {"caption": body, "url": public_media_url.replace('/audio?', '/video?'), **base_media_data}
                 elif msg_type in ('audio', 'ptt', 'voice'):
-                    evo_data['data']['message']['audioMessage'] = {}
+                    evo_data['data']['message']['audioMessage'] = {"url": public_media_url, **base_media_data}
                 elif msg_type == 'document':
-                    evo_data['data']['message']['documentMessage'] = {"fileName": body or 'Arquivo'}
+                    evo_data['data']['message']['documentMessage'] = {"fileName": body or 'Arquivo', "url": public_media_url.replace('/audio?', '/document?'), **base_media_data}
                 else:
                     # fallback
-                    evo_data['data']['message']['documentMessage'] = {"fileName": 'Arquivo'}
+                    evo_data['data']['message']['documentMessage'] = {"fileName": 'Arquivo', "url": public_media_url.replace('/audio?', '/document?'), **base_media_data}
             elif msg_type == 'location':
                 loc_name = payload.get('location', {}).get('description') or payload.get('body') or ''
                 evo_data['data']['message']['locationMessage'] = {
