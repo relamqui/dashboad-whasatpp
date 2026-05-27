@@ -108,6 +108,11 @@ class Contact(db_sql.Model):
     avatar = db_sql.Column(db_sql.Text, nullable=True)
     instance = db_sql.Column(db_sql.String(100), nullable=True)
     tags = db_sql.Column(db_sql.JSON, default=['Novo Lead'])
+    last_msg = db_sql.Column(db_sql.Text, nullable=True)
+    last_msg_time = db_sql.Column(db_sql.String(20), nullable=True)
+    unread = db_sql.Column(db_sql.Integer, default=0)
+    assigned_to = db_sql.Column(db_sql.Integer, db_sql.ForeignKey('user.id'), nullable=True)
+    assigned_name = db_sql.Column(db_sql.String(100), nullable=True)
 
 class ContactRequest(db_sql.Model):
     id = db_sql.Column(db_sql.Integer, primary_key=True)
@@ -119,11 +124,6 @@ class ContactRequest(db_sql.Model):
     status = db_sql.Column(db_sql.String(20), default='PENDING') # PENDING, ANSWERED
     created_at = db_sql.Column(db_sql.DateTime, default=datetime.datetime.utcnow)
     is_first_time = db_sql.Column(db_sql.Boolean, default=True)
-    last_msg = db_sql.Column(db_sql.Text, nullable=True)
-    last_msg_time = db_sql.Column(db_sql.String(20), nullable=True)
-    unread = db_sql.Column(db_sql.Integer, default=0)
-    assigned_to = db_sql.Column(db_sql.Integer, db_sql.ForeignKey('user.id'), nullable=True)
-    assigned_name = db_sql.Column(db_sql.String(100), nullable=True)
 
 class Message(db_sql.Model):
     id = db_sql.Column(db_sql.String(100), primary_key=True)
