@@ -16,14 +16,7 @@ let emojiVisible = false;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getDefaultInstance() {
-    if (window.instancesList && window.instancesList.length > 0) {
-        return window.instancesList[0].name;
-    }
-    const user = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
-    if (user.instances && user.instances.length > 0) {
-        return user.instances[0];
-    }
-    return null;
+    return 'corpal';
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
