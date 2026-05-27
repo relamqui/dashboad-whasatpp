@@ -2404,9 +2404,15 @@ def webhook():
                 track_sla_event(phone, event_type='ATTENDANT_MSG' if fromMe else 'CLIENT_MSG')
                 
                 if not fromMe:
-                    # --- Lógica de Solicitação de Contato (N8N Fila) ---
                     # Verifica se este cliente estava na fila aguardando resposta
-                    req = ContactRequest.query.filter_by(phone=phone, status='PENDING').first()
+                    pending_reqs = ContactRequest.query.filter_by(status='PENDING').all()
+                    req = None
+                    for pr in pending_reqs:
+                        # Compara os últimos 8 dígitos (ignora DDD e o 9 extra do BR) para evitar falhas
+                        if pr.phone[-8:] == phone[-8:]:
+                            req = pr
+                            break
+                            
                     if req:
                         req.status = 'ANSWERED'
                         
