@@ -117,7 +117,7 @@ class ContactRequest(db_sql.Model):
     setor = db_sql.Column(db_sql.String(150), nullable=True)
     reason = db_sql.Column(db_sql.Text, nullable=False)
     status = db_sql.Column(db_sql.String(20), default='PENDING') # PENDING, ANSWERED
-    created_at = db_sql.Column(db_sql.DateTime, default=datetime.utcnow)
+    created_at = db_sql.Column(db_sql.DateTime, default=datetime.datetime.utcnow)
     is_first_time = db_sql.Column(db_sql.Boolean, default=True)
     last_msg = db_sql.Column(db_sql.Text, nullable=True)
     last_msg_time = db_sql.Column(db_sql.String(20), nullable=True)
