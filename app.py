@@ -1151,6 +1151,27 @@ def auto_assign_chat_to_sender(contact, user_data):
     contact.tags = tags
     from sqlalchemy.orm.attributes import flag_modified
     flag_modified(contact, 'tags')
+    
+    # Atualiza tabela atendimentos_chat
+    agora_iso = get_now().isoformat()
+    atend = AtendimentoChat.query.filter_by(numero=contact.phone).first()
+    if atend:
+        atend.atendente = user_email
+        atend.status = 'atendente'
+        atend.ultimo_atendente = user_email
+        atend.registro_time_chat = agora_iso
+        atend.atendente_desde = agora_iso
+    else:
+        atend = AtendimentoChat(numero=contact.phone, status='atendente', atendente=user_email, ultimo_atendente=user_email, registro_time_chat=agora_iso, atendente_desde=agora_iso)
+        db_sql.session.add(atend)
+
+    # Dispara evento socket para atualizar interface
+    socketio.emit('chat_assignment', {
+        'contact_id': contact.id,
+        'assigned_to': user_data.get('id'),
+        'assigned_name': user_email,
+        'tags': tags
+    })
 
 @app.route('/api/whatsapp/send', methods=['POST'])
 @auth_required
