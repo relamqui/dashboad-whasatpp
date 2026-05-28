@@ -1185,7 +1185,7 @@ def send_message():
             contact.last_msg = text
             contact.last_msg_time = time_str
             contact.assigned_to = request.user['id']
-            contact.assigned_name = request.user['name']
+            contact.assigned_name = request.user.get('email')
         else:
             new_contact = Contact(
                 id=contact_id,
@@ -1198,7 +1198,7 @@ def send_message():
                 last_msg_time=time_str,
                 unread=0,
                 assigned_to=request.user['id'],
-                assigned_name=request.user['name']
+                assigned_name=request.user.get('email')
             )
             db_sql.session.add(new_contact)
         
@@ -1346,7 +1346,7 @@ def send_audio():
             contact = Contact(id=contact_id, phone=number, name=f"Novo {number}", instance=inst)
             db_sql.session.add(contact)
         contact.assigned_to = request.user['id']
-        contact.assigned_name = request.user['name']
+        contact.assigned_name = request.user.get('email')
         db_sql.session.flush()
 
         # Salvar mensagem
@@ -1442,7 +1442,7 @@ def send_image():
             contact = Contact(id=contact_id, phone=number, name=f"Novo {number}", instance=inst)
             db_sql.session.add(contact)
         contact.assigned_to = request.user['id']
-        contact.assigned_name = request.user['name']
+        contact.assigned_name = request.user.get('email')
         db_sql.session.flush()
 
         if not Message.query.get(msg_id):
@@ -1532,7 +1532,7 @@ def send_video():
             contact = Contact(id=contact_id, phone=number, name=f"Novo {number}", instance=inst)
             db_sql.session.add(contact)
         contact.assigned_to = request.user['id']
-        contact.assigned_name = request.user['name']
+        contact.assigned_name = request.user.get('email')
         db_sql.session.flush()
 
         if not Message.query.get(msg_id):
@@ -1654,7 +1654,7 @@ def send_document():
             contact = Contact(id=contact_id, phone=number, name=f"Novo {number}", instance=inst)
             db_sql.session.add(contact)
         contact.assigned_to = request.user['id']
-        contact.assigned_name = request.user['name']
+        contact.assigned_name = request.user.get('email')
         db_sql.session.flush()
 
         if not Message.query.get(msg_id):
@@ -1719,7 +1719,7 @@ def send_location():
             contact = Contact(id=contact_id, phone=number, name=f"Novo {number}", instance=inst)
             db_sql.session.add(contact)
         contact.assigned_to = request.user['id']
-        contact.assigned_name = request.user['name']
+        contact.assigned_name = request.user.get('email')
         db_sql.session.flush()
 
         if not Message.query.get(msg_id):
@@ -1806,7 +1806,7 @@ def send_contact():
             contact = Contact(id=contact_id, phone=number, name=f"Novo {number}", instance=inst)
             db_sql.session.add(contact)
         contact.assigned_to = request.user['id']
-        contact.assigned_name = request.user['name']
+        contact.assigned_name = request.user.get('email')
         db_sql.session.flush()
 
         if not Message.query.get(msg_id):
