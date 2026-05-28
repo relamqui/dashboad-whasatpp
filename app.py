@@ -1184,6 +1184,8 @@ def send_message():
         if contact:
             contact.last_msg = text
             contact.last_msg_time = time_str
+            contact.assigned_to = request.user['id']
+            contact.assigned_name = request.user['name']
         else:
             new_contact = Contact(
                 id=contact_id,
@@ -1194,7 +1196,9 @@ def send_message():
                 tags=['Novo Lead'],
                 last_msg=text,
                 last_msg_time=time_str,
-                unread=0
+                unread=0,
+                assigned_to=request.user['id'],
+                assigned_name=request.user['name']
             )
             db_sql.session.add(new_contact)
         
@@ -1341,7 +1345,9 @@ def send_audio():
         if not contact:
             contact = Contact(id=contact_id, phone=number, name=f"Novo {number}", instance=inst)
             db_sql.session.add(contact)
-            db_sql.session.flush()
+        contact.assigned_to = request.user['id']
+        contact.assigned_name = request.user['name']
+        db_sql.session.flush()
 
         # Salvar mensagem
         if not Message.query.get(msg_id):
@@ -1435,7 +1441,9 @@ def send_image():
         if not contact:
             contact = Contact(id=contact_id, phone=number, name=f"Novo {number}", instance=inst)
             db_sql.session.add(contact)
-            db_sql.session.flush()
+        contact.assigned_to = request.user['id']
+        contact.assigned_name = request.user['name']
+        db_sql.session.flush()
 
         if not Message.query.get(msg_id):
             new_msg = Message(
@@ -1523,7 +1531,9 @@ def send_video():
         if not contact:
             contact = Contact(id=contact_id, phone=number, name=f"Novo {number}", instance=inst)
             db_sql.session.add(contact)
-            db_sql.session.flush()
+        contact.assigned_to = request.user['id']
+        contact.assigned_name = request.user['name']
+        db_sql.session.flush()
 
         if not Message.query.get(msg_id):
             new_msg = Message(
@@ -1643,7 +1653,9 @@ def send_document():
         if not contact:
             contact = Contact(id=contact_id, phone=number, name=f"Novo {number}", instance=inst)
             db_sql.session.add(contact)
-            db_sql.session.flush()
+        contact.assigned_to = request.user['id']
+        contact.assigned_name = request.user['name']
+        db_sql.session.flush()
 
         if not Message.query.get(msg_id):
             new_msg = Message(
@@ -1706,7 +1718,9 @@ def send_location():
         if not contact:
             contact = Contact(id=contact_id, phone=number, name=f"Novo {number}", instance=inst)
             db_sql.session.add(contact)
-            db_sql.session.flush()
+        contact.assigned_to = request.user['id']
+        contact.assigned_name = request.user['name']
+        db_sql.session.flush()
 
         if not Message.query.get(msg_id):
             new_msg = Message(
@@ -1791,7 +1805,9 @@ def send_contact():
         if not contact:
             contact = Contact(id=contact_id, phone=number, name=f"Novo {number}", instance=inst)
             db_sql.session.add(contact)
-            db_sql.session.flush()
+        contact.assigned_to = request.user['id']
+        contact.assigned_name = request.user['name']
+        db_sql.session.flush()
 
         if not Message.query.get(msg_id):
             new_msg = Message(
