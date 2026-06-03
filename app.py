@@ -215,11 +215,15 @@ def get_media_base64(instance, msg_data):
         if res.status_code == 200:
             import base64
             file_bytes = res.content
+            # Determinar extensão pela resposta do WAHA
+            ctype = res.headers.get('Content-Type', '')
+            import mimetypes as _mt_b64
+            ext = _mt_b64.guess_extension(ctype.split(';')[0].strip()) or '.oga'
             # Salvar localmente para uso futuro
             try:
                 os.makedirs(media_dir, exist_ok=True)
                 for save_id in set([msg_id, short_id]):
-                    save_path = os.path.join(media_dir, save_id + '.oga')
+                    save_path = os.path.join(media_dir, save_id + ext)
                     if not os.path.exists(save_path):
                         with open(save_path, 'wb') as f:
                             f.write(file_bytes)
@@ -3820,8 +3824,16 @@ def stream_media(media_type):
             # Salvar no cache local para acelerar futuras requisições (com ambos os IDs)
             try:
                 os.makedirs(media_dir, exist_ok=True)
+                # Determinar extensão baseada no content_type real
+                import mimetypes as _mt_proxy
+                proxy_ext = _mt_proxy.guess_extension(content_type.split(';')[0].strip()) or ''
+                if not proxy_ext:
+                    if media_type == 'audio': proxy_ext = '.oga'
+                    elif media_type == 'image': proxy_ext = '.jpeg'
+                    elif media_type == 'video': proxy_ext = '.mp4'
+                    elif media_type == 'document': proxy_ext = '.bin'
                 # Salvar com short_id (principal) e com o ID completo
-                for save_path in set([local_path_short, local_path]):
+                for save_path in set([local_path_short + proxy_ext, local_path + proxy_ext]):
                     try:
                         with open(save_path, 'wb') as f:
                             f.write(file_bytes)
