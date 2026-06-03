@@ -1120,6 +1120,28 @@
       }
     }
 
+    function cleanMediaName(name) {
+      // Remove extensão para display
+      let display = name.replace(/\.[^.]+$/, '');
+      // Detecta direção pelo prefixo true_/false_ do NOWEB
+      let direction = '';
+      if (display.startsWith('true_')) {
+        direction = '📤';
+        display = display.substring(5);
+      } else if (display.startsWith('false_')) {
+        direction = '📥';
+        display = display.substring(6);
+      }
+      // Remove @lid_... (hash longo do NOWEB)
+      const lidIdx = display.indexOf('@lid_');
+      if (lidIdx > 0) display = display.substring(0, lidIdx);
+      // Remove @s.whatsapp.net
+      display = display.replace(/@s\.whatsapp\.net/g, '');
+      // Trunca se ainda for longo demais
+      if (display.length > 28) display = display.substring(0, 14) + '…' + display.substring(display.length - 10);
+      return { display, direction };
+    }
+
     async function loadMediaFiles(page) {
       if (page) mediaCurrentPage = page;
       const type = document.getElementById('mediaTypeFilter').value;
@@ -1153,6 +1175,7 @@
 
         const date = new Date(f.modified * 1000);
         const dateStr = `${date.getDate().toString().padStart(2,'0')}/${(date.getMonth()+1).toString().padStart(2,'0')}/${date.getFullYear()} ${date.getHours().toString().padStart(2,'0')}:${date.getMinutes().toString().padStart(2,'0')}`;
+        const { display: cleanName, direction } = cleanMediaName(f.name);
 
         card.innerHTML = `
           <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
@@ -1161,7 +1184,7 @@
               ${getTypeIcon(f.type)}
             </div>
             <div style="min-width:0; flex:1;">
-              <div style="font-size:12px; font-weight:600; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${f.name}">${f.name}</div>
+              <div style="font-size:12px; font-weight:600; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${f.name}">${direction ? direction + ' ' : ''}${cleanName}</div>
               <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${f.ext} · ${formatFileSize(f.size)}</div>
             </div>
           </div>

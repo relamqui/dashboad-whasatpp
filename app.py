@@ -3931,10 +3931,17 @@ def admin_list_media():
     })
 
 @app.route('/api/admin/media/serve/<path:filename>')
-@auth_required
 def admin_serve_media(filename):
-    """Serve um arquivo de mídia diretamente. Apenas admin."""
-    if request.user.get('role') != 'admin':
+    """Serve um arquivo de mídia diretamente. Apenas admin.
+    Aceita token via query param porque tags <audio>/<img>/<video> não enviam headers customizados."""
+    token = request.args.get('token') or (request.headers.get('Authorization', '').replace('Bearer ', ''))
+    if not token:
+        return jsonify({'error': 'Token obrigatório'}), 401
+    try:
+        user_data = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+    except Exception:
+        return jsonify({'error': 'Token inválido'}), 401
+    if user_data.get('role') != 'admin':
         return jsonify({'error': 'Acesso negado'}), 403
 
     import mimetypes as _mt
@@ -3948,21 +3955,63 @@ def admin_serve_media(filename):
     if not os.path.exists(filepath):
         return jsonify({'error': 'Arquivo não encontrado'}), 404
 
-    guess, _ = _mt.guess_type(filepath)
-    content_type = guess or 'application/octet-stream'
-
-    # Detectar áudio por magic bytes se o mimetype não for audio
-    _, ext = os.path.splitext(filename)
-    if ext.lower() in ('.oga', '.ogg', '.opus'):
-        content_type = 'audio/ogg'
-    elif ext.lower() == '.webm':
-        content_type = 'audio/webm'
-
     with open(filepath, 'rb') as f:
-        data = f.read()
+        file_data = f.read()
 
-    return Response(data, mimetype=content_type, headers={
+    # Detectar content_type por magic bytes primeiro, fallback para extensão
+    _, ext = os.path.splitext(filename)
+    ext_lower = ext.lower()
+
+    content_type = 'application/octet-stream'
+    if file_data[:4] == b'OggS':
+        content_type = 'audio/ogg'
+    elif file_data[:4] == b'\x1aE\xdf\xa3':  # WebM/Matroska
+        content_type = 'audio/webm'
+    elif file_data[:3] == b'ID3' or file_data[:2] == b'\xff\xfb':
+        content_type = 'audio/mpeg'
+    elif file_data[:8] == b'\x89PNG\r\n\x1a\n':
+        content_type = 'image/png'
+    elif file_data[:2] == b'\xff\xd8':
+        content_type = 'image/jpeg'
+    elif file_data[:4] == b'RIFF' and file_data[8:12] == b'WEBP':
+        content_type = 'image/webp'
+    elif file_data[:3] == b'GIF':
+        content_type = 'image/gif'
+    elif file_data[4:8] == b'ftyp':  # MP4/M4A
+        # Distinguir vídeo de áudio M4A
+        ftyp_brand = file_data[8:12]
+        if ftyp_brand in (b'M4A ', b'M4B '):
+            content_type = 'audio/mp4'
+        else:
+            content_type = 'video/mp4'
+    elif file_data[:4] == b'%PDF':
+        content_type = 'application/pdf'
+    else:
+        # Fallback para extensão
+        if ext_lower in ('.oga', '.ogg', '.opus'):
+            content_type = 'audio/ogg'
+        elif ext_lower == '.webm':
+            content_type = 'audio/webm'
+        elif ext_lower in ('.mp3',):
+            content_type = 'audio/mpeg'
+        elif ext_lower in ('.jpeg', '.jpg'):
+            content_type = 'image/jpeg'
+        elif ext_lower == '.png':
+            content_type = 'image/png'
+        elif ext_lower == '.webp':
+            content_type = 'image/webp'
+        elif ext_lower == '.mp4':
+            content_type = 'video/mp4'
+        elif ext_lower == '.pdf':
+            content_type = 'application/pdf'
+        else:
+            guess, _ = _mt.guess_type(filepath)
+            if guess:
+                content_type = guess
+
+    return Response(file_data, mimetype=content_type, headers={
         'Content-Disposition': 'inline',
+        'Accept-Ranges': 'bytes',
         'Cache-Control': 'public, max-age=3600'
     })
 
