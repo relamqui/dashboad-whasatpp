@@ -4331,7 +4331,7 @@ def report_ranking():
     messages = query.order_by(Message.contact_id, Message.timestamp).all()
     
     # Logic to compute response time per contact
-    attendant_stats = {} # sender_id -> {'total_time': 0, 'count': 0}
+    attendant_stats = {} # sender_id -> {'times': []}
     last_in_time = None
     
     current_contact = None
@@ -4347,11 +4347,11 @@ def report_ranking():
                 resp_time = msg.timestamp - last_in_time
                 if resp_time < 0: resp_time = 0
                 
-                if msg.sender_id not in attendant_stats:
-                    attendant_stats[msg.sender_id] = {'total_time': 0, 'count': 0}
-                
-                attendant_stats[msg.sender_id]['total_time'] += resp_time
-                attendant_stats[msg.sender_id]['count'] += 1
+                # Ignore responses that took more than 48 hours (likely reactivations or weekends)
+                if resp_time <= 172800:
+                    if msg.sender_id not in attendant_stats:
+                        attendant_stats[msg.sender_id] = {'times': []}
+                    attendant_stats[msg.sender_id]['times'].append(resp_time)
                 
             last_in_time = None # Reset to only count the first response to a burst
             
@@ -4360,14 +4360,18 @@ def report_ranking():
     users = {u.id: u for u in User.query.all()}
     for uid, stats in attendant_stats.items():
         user = users.get(uid)
-        if user:
-            avg_time = stats['total_time'] / stats['count'] if stats['count'] > 0 else 0
+        if user and len(stats['times']) > 0:
+            times = sorted(stats['times'])
+            # Calculate median to avoid distortion from overnight/weekend outliers
+            mid = len(times) // 2
+            median_time = (times[mid] + times[~mid]) / 2.0
+            
             ranking.append({
                 'id': user.id,
                 'name': user.name,
                 'email': user.email,
-                'avg_time': avg_time,
-                'count': stats['count']
+                'avg_time': median_time,
+                'count': len(times)
             })
             
     # Sort ascending by avg_time
