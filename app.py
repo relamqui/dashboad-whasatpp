@@ -4331,7 +4331,7 @@ def report_ranking():
     messages = query.order_by(Message.contact_id, Message.timestamp).all()
     
     # Logic to compute response time per contact
-    attendant_stats = {} # sender_id -> {'times': [], 'total_msgs': 0}
+    attendant_stats = {} # sender_id -> {'total_msgs': 0, 'conversations': {contact_id: [times]}}
     last_in_time = None
     
     current_contact = None
@@ -4345,7 +4345,7 @@ def report_ranking():
         elif msg.type == 'out':
             if msg.sender_id:
                 if msg.sender_id not in attendant_stats:
-                    attendant_stats[msg.sender_id] = {'times': [], 'total_msgs': 0}
+                    attendant_stats[msg.sender_id] = {'total_msgs': 0, 'conversations': {}}
                 
                 # Increment absolute count of messages sent by this attendant
                 attendant_stats[msg.sender_id]['total_msgs'] += 1
