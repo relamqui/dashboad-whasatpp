@@ -137,6 +137,7 @@ class Message(db_sql.Model):
     timestamp = db_sql.Column(db_sql.BigInteger, nullable=False)
     instance = db_sql.Column(db_sql.String(100), nullable=True)
     ack = db_sql.Column(db_sql.Integer, default=0, nullable=True)
+    sender_id = db_sql.Column(db_sql.Integer, db_sql.ForeignKey('user.id'), nullable=True)
 
 class Setting(db_sql.Model):
     key = db_sql.Column(db_sql.String(50), primary_key=True)
@@ -358,6 +359,12 @@ def migrate_to_sql():
             
         try:
             db_sql.session.execute(db_sql.text('ALTER TABLE message ADD COLUMN ack INTEGER DEFAULT 0'))
+            db_sql.session.commit()
+        except Exception:
+            db_sql.session.rollback()
+            
+        try:
+            db_sql.session.execute(db_sql.text('ALTER TABLE message ADD COLUMN sender_id INTEGER REFERENCES "user"(id)'))
             db_sql.session.commit()
         except Exception:
             db_sql.session.rollback()
@@ -1289,7 +1296,8 @@ def send_message():
                 type='out',
                 time=time_str,
                 timestamp=int(now.timestamp()),
-                instance=inst
+                instance=inst,
+                sender_id=request.user['id']
             )
             db_sql.session.add(new_msg)
         
@@ -1428,7 +1436,8 @@ def send_audio():
         if not Message.query.get(msg_id):
             new_msg = Message(
                 id=msg_id, contact_id=contact_id, text=text,
-                type='out', time=time_str, timestamp=int(now.timestamp()), instance=inst
+                type='out', time=time_str, timestamp=int(now.timestamp()), instance=inst,
+                sender_id=request.user['id']
             )
             db_sql.session.add(new_msg)
 
@@ -1522,7 +1531,8 @@ def send_image():
         if not Message.query.get(msg_id):
             new_msg = Message(
                 id=msg_id, contact_id=contact_id, text=text,
-                type='out', time=time_str, timestamp=int(now.timestamp()), instance=inst
+                type='out', time=time_str, timestamp=int(now.timestamp()), instance=inst,
+                sender_id=request.user['id']
             )
             db_sql.session.add(new_msg)
 
@@ -1611,7 +1621,8 @@ def send_video():
         if not Message.query.get(msg_id):
             new_msg = Message(
                 id=msg_id, contact_id=contact_id, text=text,
-                type='out', time=time_str, timestamp=int(now.timestamp()), instance=inst
+                type='out', time=time_str, timestamp=int(now.timestamp()), instance=inst,
+                sender_id=request.user['id']
             )
             db_sql.session.add(new_msg)
 
@@ -1732,7 +1743,8 @@ def send_document():
         if not Message.query.get(msg_id):
             new_msg = Message(
                 id=msg_id, contact_id=contact_id, text=text,
-                type='out', time=time_str, timestamp=int(now.timestamp()), instance=inst
+                type='out', time=time_str, timestamp=int(now.timestamp()), instance=inst,
+                sender_id=request.user['id']
             )
             db_sql.session.add(new_msg)
 
@@ -1796,7 +1808,8 @@ def send_location():
         if not Message.query.get(msg_id):
             new_msg = Message(
                 id=msg_id, contact_id=contact_id, text=text,
-                type='out', time=time_str, timestamp=int(now.timestamp()), instance=inst
+                type='out', time=time_str, timestamp=int(now.timestamp()), instance=inst,
+                sender_id=request.user['id']
             )
             db_sql.session.add(new_msg)
 
@@ -1882,7 +1895,8 @@ def send_contact():
         if not Message.query.get(msg_id):
             new_msg = Message(
                 id=msg_id, contact_id=contact_id, text=text,
-                type='out', time=time_str, timestamp=int(now.timestamp()), instance=inst
+                type='out', time=time_str, timestamp=int(now.timestamp()), instance=inst,
+                sender_id=request.user['id']
             )
             db_sql.session.add(new_msg)
 
@@ -1992,7 +2006,8 @@ def bot_message_webhook():
                 type='out',
                 time=time_str,
                 timestamp=int(now.timestamp()),
-                instance=inst
+                instance=inst,
+                sender_id=request.user['id']
             )
             db_sql.session.add(new_msg)
         
@@ -2545,6 +2560,7 @@ def webhook():
                     id=contact_id, name=phone, phone=phone,
                     avatar=phone[0] if phone else "?",
                     instance=instance,
+                    sender_id=contact.assigned_to if fromMe else None,
                     tags=['Novo Lead'], last_msg=text, last_msg_time=time_str,
                     unread=0 if fromMe else 1
                 )
@@ -2574,7 +2590,8 @@ def webhook():
                     type='out' if fromMe else 'in',
                     time=time_str,
                     timestamp=int(now.timestamp()),
-                    instance=instance
+                    instance=instance,
+                    sender_id=contact.assigned_to if fromMe else None
                 )
                 db_sql.session.add(new_msg)
                 
@@ -2877,6 +2894,7 @@ def create_contact():
             phone=phone,
             avatar=phone[0] if phone else "?",
             instance=instance,
+                    sender_id=contact.assigned_to if fromMe else None,
             tags=['Novo Lead'],
             last_msg='Iniciando conversa...',
             last_msg_time=get_now().strftime('%H:%M'),
@@ -4177,7 +4195,69 @@ def report_sla():
         
     return jsonify({'success': True, 'data': data}), 200
 
+
+@app.route('/api/reports/ranking', methods=['GET'])
+@auth_required
+@admin_required
+def report_ranking():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    query = Message.query
+    if start_date:
+        query = query.filter(Message.time >= start_date)
+    if end_date:
+        query = query.filter(Message.time <= end_date + ' 23:59:59')
+        
+    messages = query.order_by(Message.contact_id, Message.timestamp).all()
+    
+    # Logic to compute response time per contact
+    attendant_stats = {} # sender_id -> {'total_time': 0, 'count': 0}
+    last_in_time = None
+    
+    current_contact = None
+    for msg in messages:
+        if current_contact != msg.contact_id:
+            current_contact = msg.contact_id
+            last_in_time = None
+            
+        if msg.type == 'in':
+            last_in_time = msg.timestamp
+        elif msg.type == 'out' and last_in_time is not None:
+            if msg.sender_id:
+                resp_time = msg.timestamp - last_in_time
+                if resp_time < 0: resp_time = 0
+                
+                if msg.sender_id not in attendant_stats:
+                    attendant_stats[msg.sender_id] = {'total_time': 0, 'count': 0}
+                
+                attendant_stats[msg.sender_id]['total_time'] += resp_time
+                attendant_stats[msg.sender_id]['count'] += 1
+                
+            last_in_time = None # Reset to only count the first response to a burst
+            
+    # Compile results
+    ranking = []
+    users = {u.id: u for u in User.query.all()}
+    for uid, stats in attendant_stats.items():
+        user = users.get(uid)
+        if user:
+            avg_time = stats['total_time'] / stats['count'] if stats['count'] > 0 else 0
+            ranking.append({
+                'id': user.id,
+                'name': user.name,
+                'email': user.email,
+                'avg_time': avg_time,
+                'count': stats['count']
+            })
+            
+    # Sort ascending by avg_time
+    ranking.sort(key=lambda x: x['avg_time'])
+    
+    return jsonify({'success': True, 'data': ranking}), 200
+
 @app.route('/')
+
 def index_page():
     return send_from_directory(ROOT_DIR, 'index.html')
 
