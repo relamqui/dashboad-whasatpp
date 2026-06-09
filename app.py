@@ -4205,9 +4205,18 @@ def report_ranking():
     
     query = Message.query
     if start_date:
-        query = query.filter(Message.time >= start_date)
+        try:
+            # start_date is 'YYYY-MM-DD'
+            start_ts = int(datetime.datetime.strptime(start_date, '%Y-%m-%d').timestamp())
+            query = query.filter(Message.timestamp >= start_ts)
+        except Exception:
+            pass
     if end_date:
-        query = query.filter(Message.time <= end_date + ' 23:59:59')
+        try:
+            end_ts = int(datetime.datetime.strptime(end_date + ' 23:59:59', '%Y-%m-%d %H:%M:%S').timestamp())
+            query = query.filter(Message.timestamp <= end_ts)
+        except Exception:
+            pass
         
     messages = query.order_by(Message.contact_id, Message.timestamp).all()
     

@@ -166,15 +166,9 @@
       const token = localStorage.getItem('wp_crm_token');
       if (!token) window.location.href = 'index.html';
       
-      const today = new Date();
-      const end = today.toISOString().split('T')[0];
-      
-      const startD = new Date(today);
-      startD.setDate(startD.getDate() - 30);
-      const start = startD.toISOString().split('T')[0];
-
-      document.getElementById('filterStart').value = start;
-      document.getElementById('filterEnd').value = end;
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('filterStart').value = today;
+      document.getElementById('filterEnd').value = today;
       
       loadRanking();
     };
