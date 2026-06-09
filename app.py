@@ -4374,8 +4374,8 @@ def report_ranking():
                 'count': len(times)
             })
             
-    # Sort ascending by avg_time
-    ranking.sort(key=lambda x: x['avg_time'])
+    # Sort descending by count, then ascending by avg_time
+    ranking.sort(key=lambda x: (-x['count'], x['avg_time']))
     
     return jsonify({'success': True, 'data': ranking}), 200
 
