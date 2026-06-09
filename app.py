@@ -4331,7 +4331,7 @@ def report_ranking():
     messages = query.order_by(Message.contact_id, Message.timestamp).all()
     
     # Logic to compute response time per contact
-    attendant_stats = {} # sender_id -> {'times': []}
+    attendant_stats = {} # sender_id -> {'times': [], 'total_msgs': 0}
     last_in_time = None
     
     current_contact = None
@@ -4342,16 +4342,21 @@ def report_ranking():
             
         if msg.type == 'in':
             last_in_time = msg.timestamp
-        elif msg.type == 'out' and last_in_time is not None:
+        elif msg.type == 'out':
             if msg.sender_id:
-                resp_time = msg.timestamp - last_in_time
-                if resp_time < 0: resp_time = 0
-                
-                # We use median, so extreme outliers won't distort the ranking,
-                # but we still record them in case the attendant genuinely takes days to reply.
                 if msg.sender_id not in attendant_stats:
-                    attendant_stats[msg.sender_id] = {'times': []}
-                attendant_stats[msg.sender_id]['times'].append(resp_time)
+                    attendant_stats[msg.sender_id] = {'times': [], 'total_msgs': 0}
+                
+                # Increment absolute count of messages sent by this attendant
+                attendant_stats[msg.sender_id]['total_msgs'] += 1
+                
+                if last_in_time is not None:
+                    resp_time = msg.timestamp - last_in_time
+                    if resp_time < 0: resp_time = 0
+                    
+                    # We use median, so extreme outliers won't distort the ranking,
+                    # but we still record them in case the attendant genuinely takes days to reply.
+                    attendant_stats[msg.sender_id]['times'].append(resp_time)
                 
             last_in_time = None # Reset to only count the first response to a burst
             
@@ -4360,18 +4365,20 @@ def report_ranking():
     users = {u.id: u for u in User.query.all()}
     for uid, stats in attendant_stats.items():
         user = users.get(uid)
-        if user and len(stats['times']) > 0:
+        if user and stats['total_msgs'] > 0:
             times = sorted(stats['times'])
-            # Calculate median to avoid distortion from overnight/weekend outliers
-            mid = len(times) // 2
-            median_time = (times[mid] + times[~mid]) / 2.0
+            if len(times) > 0:
+                mid = len(times) // 2
+                median_time = (times[mid] + times[~mid]) / 2.0
+            else:
+                median_time = 0
             
             ranking.append({
                 'id': user.id,
                 'name': user.name,
                 'email': user.email,
                 'avg_time': median_time,
-                'count': len(times)
+                'count': stats['total_msgs']
             })
             
     # Sort descending by count, then ascending by avg_time
