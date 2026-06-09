@@ -60,7 +60,7 @@ ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 SERVER_BOOT_ID = str(uuid.uuid4())
 
 # Configuração do Local de Armazenamento
-DATA_DIR = os.path.join(os.getcwd(), 'data')
+DATA_DIR = os.environ.get('DATA_DIR', os.path.join(ROOT_DIR, 'data'))
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
@@ -175,6 +175,20 @@ class SlaHistory(db_sql.Model):
     finalizado_em = db_sql.Column(db_sql.Text, nullable=True)
     criado_em = db_sql.Column(db_sql.Text, nullable=False)
 
+class MediaFile(db_sql.Model):
+    __tablename__ = 'media_file'
+    id = db_sql.Column(db_sql.Integer, primary_key=True, autoincrement=True)
+    msg_id = db_sql.Column(db_sql.String(200), nullable=False, index=True)
+    short_id = db_sql.Column(db_sql.String(200), nullable=True, index=True)
+    contact_id = db_sql.Column(db_sql.String(150), nullable=True)
+    instance = db_sql.Column(db_sql.String(100), nullable=True)
+    media_type = db_sql.Column(db_sql.String(20), nullable=False)  # image, audio, video, document
+    mimetype = db_sql.Column(db_sql.String(100), nullable=True)
+    filename = db_sql.Column(db_sql.String(300), nullable=False)
+    file_size = db_sql.Column(db_sql.Integer, nullable=True)
+    original_filename = db_sql.Column(db_sql.String(300), nullable=True)
+    created_at = db_sql.Column(db_sql.Text, nullable=False)
+
 # ─── Utils ──────────────────────────────────────────────────────────────────
 def normalize_br_phone(phone_str):
     if not phone_str: return ""
@@ -218,23 +232,97 @@ def get_media_base64(instance, msg_data):
             file_bytes = res.content
             # Determinar extensão pela resposta do WAHA
             ctype = res.headers.get('Content-Type', '')
-            import mimetypes as _mt_b64
-            ext = _mt_b64.guess_extension(ctype.split(';')[0].strip()) or '.oga'
-            # Salvar localmente para uso futuro
-            try:
-                os.makedirs(media_dir, exist_ok=True)
-                for save_id in set([msg_id, short_id]):
-                    save_path = os.path.join(media_dir, save_id + ext)
-                    if not os.path.exists(save_path):
-                        with open(save_path, 'wb') as f:
-                            f.write(file_bytes)
-                print(f"[Media] get_media_base64: salvo localmente para msg_id={msg_id}")
-            except Exception as e_save:
-                print(f"[Media] get_media_base64: erro ao salvar local: {e_save}")
+            # Determinar tipo de mídia pelo content-type
+            m_type = 'audio'
+            if ctype.startswith('image/'): m_type = 'image'
+            elif ctype.startswith('video/'): m_type = 'video'
+            elif ctype.startswith('application/'): m_type = 'document'
+            save_media_file(msg_id, file_bytes, m_type, instance=instance, mimetype=ctype)
             return base64.b64encode(file_bytes).decode('utf-8')
     except Exception as e:
         print(f"Erro ao baixar midia base64 (WAHA): {e}")
     return None
+
+def save_media_file(msg_id, file_bytes, media_type, instance=None, contact_id=None, mimetype=None, original_filename=None):
+    """Salva arquivo de mídia em data/media/ e registra na tabela media_file.
+    Retorna o filename salvo ou None se falhar."""
+    if not msg_id or not file_bytes:
+        return None
+    try:
+        media_dir = os.path.join(DATA_DIR, 'media')
+        os.makedirs(media_dir, exist_ok=True)
+        short_id = msg_id.split('_')[-1] if '_' in msg_id else msg_id
+
+        # Determinar extensão baseada no tipo e mimetype
+        ext = ''
+        if media_type == 'image':
+            if mimetype and 'png' in mimetype: ext = '.png'
+            elif mimetype and 'webp' in mimetype: ext = '.webp'
+            elif mimetype and 'gif' in mimetype: ext = '.gif'
+            else: ext = '.jpeg'
+        elif media_type in ('audio', 'voice', 'ptt'):
+            if mimetype and 'ogg' in mimetype: ext = '.oga'
+            elif mimetype and 'webm' in mimetype: ext = '.webm'
+            elif mimetype and 'mpeg' in mimetype: ext = '.mp3'
+            else: ext = '.oga'
+        elif media_type == 'video':
+            ext = '.mp4'
+        elif media_type == 'document':
+            if original_filename:
+                _, doc_ext = os.path.splitext(original_filename)
+                if doc_ext: ext = doc_ext
+            if not ext and mimetype:
+                import mimetypes as _mt_save
+                guessed = _mt_save.guess_extension(mimetype.split(';')[0].strip())
+                ext = guessed if guessed else '.bin'
+            if not ext: ext = '.bin'
+        else:
+            ext = '.bin'
+
+        filename = f"{short_id}{ext}"
+        filepath = os.path.join(media_dir, filename)
+
+        # Salvar arquivo no disco
+        with open(filepath, 'wb') as f:
+            f.write(file_bytes)
+
+        # Cópia com ID completo para o proxy encontrar por ambos
+        if short_id != msg_id:
+            try:
+                with open(os.path.join(media_dir, f"{msg_id}{ext}"), 'wb') as f:
+                    f.write(file_bytes)
+            except Exception:
+                pass
+
+        # Registrar na tabela media_file
+        try:
+            existing = MediaFile.query.filter(
+                (MediaFile.msg_id == msg_id) | (MediaFile.short_id == short_id)
+            ).first()
+            if not existing:
+                mf = MediaFile(
+                    msg_id=msg_id,
+                    short_id=short_id if short_id != msg_id else None,
+                    contact_id=contact_id,
+                    instance=instance,
+                    media_type=media_type,
+                    mimetype=mimetype,
+                    filename=filename,
+                    file_size=len(file_bytes),
+                    original_filename=original_filename,
+                    created_at=get_now().isoformat()
+                )
+                db_sql.session.add(mf)
+                db_sql.session.commit()
+        except Exception as e_db:
+            db_sql.session.rollback()
+            print(f"[MediaFile] Erro ao registrar no banco: {e_db}")
+
+        print(f"[MediaFile] Salvo: {filename} ({media_type}, {len(file_bytes)} bytes)")
+        return filename
+    except Exception as e:
+        print(f"[MediaFile] Erro ao salvar: {e}")
+        return None
 
 def track_sla_event(numero, filial=None, setor=None, atendente=None, event_type='QUEUE_ENTER'):
     """
@@ -368,6 +456,60 @@ def migrate_to_sql():
             db_sql.session.commit()
         except Exception:
             db_sql.session.rollback()
+
+        # --- Tabela media_file ---
+        try:
+            db_sql.session.execute(db_sql.text('''
+                CREATE TABLE IF NOT EXISTS media_file (
+                    id SERIAL PRIMARY KEY,
+                    msg_id VARCHAR(200) NOT NULL,
+                    short_id VARCHAR(200),
+                    contact_id VARCHAR(150),
+                    instance VARCHAR(100),
+                    media_type VARCHAR(20) NOT NULL,
+                    mimetype VARCHAR(100),
+                    filename VARCHAR(300) NOT NULL,
+                    file_size INTEGER,
+                    original_filename VARCHAR(300),
+                    created_at TEXT NOT NULL
+                )
+            '''))
+            db_sql.session.execute(db_sql.text('CREATE INDEX IF NOT EXISTS ix_media_file_msg_id ON media_file (msg_id)'))
+            db_sql.session.execute(db_sql.text('CREATE INDEX IF NOT EXISTS ix_media_file_short_id ON media_file (short_id)'))
+            db_sql.session.commit()
+        except Exception:
+            db_sql.session.rollback()
+
+        # Popular tabela media_file com arquivos já existentes em data/media/
+        try:
+            media_dir = os.path.join(DATA_DIR, 'media')
+            if os.path.exists(media_dir):
+                existing_count = db_sql.session.execute(db_sql.text('SELECT COUNT(*) FROM media_file')).scalar()
+                if existing_count == 0:
+                    import mimetypes as _mt_scan
+                    scanned = 0
+                    for entry in os.scandir(media_dir):
+                        if not entry.is_file(): continue
+                        name = entry.name
+                        base, ext_s = os.path.splitext(name)
+                        ext_lower = ext_s.lower()
+                        if ext_lower in ('.jpeg', '.jpg', '.png', '.webp', '.gif', '.bmp'): m_type = 'image'
+                        elif ext_lower in ('.oga', '.ogg', '.webm', '.opus', '.mp3', '.wav'): m_type = 'audio'
+                        elif ext_lower in ('.mp4', '.avi', '.mov', '.mkv', '.3gp'): m_type = 'video'
+                        else: m_type = 'document'
+                        guess_mime, _ = _mt_scan.guess_type(name)
+                        db_sql.session.execute(db_sql.text(
+                            'INSERT INTO media_file (msg_id, short_id, media_type, mimetype, filename, file_size, created_at) '
+                            'VALUES (:msg_id, :short_id, :media_type, :mimetype, :filename, :file_size, :created_at)'
+                        ), {'msg_id': base, 'short_id': base, 'media_type': m_type, 'mimetype': guess_mime,
+                            'filename': name, 'file_size': entry.stat().st_size, 'created_at': get_now().isoformat()})
+                        scanned += 1
+                    db_sql.session.commit()
+                    if scanned > 0:
+                        print(f"[Migration] {scanned} arquivos de mídia registrados na tabela media_file")
+        except Exception as e_media_scan:
+            db_sql.session.rollback()
+            print(f"[Migration] Erro ao popular media_file: {e_media_scan}")
 
         if User.query.first() is None:
             print("Migrando dados do JSON para o SQL...")
@@ -1399,25 +1541,13 @@ def send_audio():
 
         msg_id = extract_waha_msg_id(res_data, f"audio_out_{int(now.timestamp())}")
         
-        # Salvar o arquivo localmente para poder reproduzir dps (já que o WAHA não armazena arquivos enviados)
+        # Salvar o arquivo localmente via função centralizada
         try:
             import base64, re
-            media_dir = os.path.join(DATA_DIR, 'media')
-            os.makedirs(media_dir, exist_ok=True)
-            # Remover quebras de linha e espaços antes de calcular o padding
             clean_b64 = re.sub(r'[^A-Za-z0-9+/]', '', audio_raw)
             pad_raw = clean_b64 + "=" * ((4 - len(clean_b64) % 4) % 4)
-            # Salvar usando o ID original e o SHORT ID para não ter erro caso o webhook retorne ID diferente
-            short_id = msg_id.split('_')[-1]
-            
-            # Forçar extensão
-            file_ext = '.webm'
-            if 'audio/ogg' in mimetype: file_ext = '.ogg'
-            
-            with open(os.path.join(media_dir, msg_id + file_ext), 'wb') as f:
-                f.write(base64.b64decode(pad_raw))
-            with open(os.path.join(media_dir, short_id + file_ext), 'wb') as f:
-                f.write(base64.b64decode(pad_raw))
+            contact_id = f"c_{number}_{inst}"
+            save_media_file(msg_id, base64.b64decode(pad_raw), 'audio', instance=inst, contact_id=contact_id, mimetype=mimetype)
         except Exception as e:
             print(f"[Send Audio] Erro ao salvar arquivo local: {e}")
 
@@ -1494,26 +1624,15 @@ def send_image():
 
         msg_id = extract_waha_msg_id(res_data, f"img_out_{int(now.timestamp())}")
         
-        # --- NEW CACHING LOGIC ---
+        # Salvar o arquivo localmente via função centralizada
         try:
             import base64, re
-            media_dir = os.path.join(DATA_DIR, 'media')
-            os.makedirs(media_dir, exist_ok=True)
             clean_b64 = re.sub(r'[^A-Za-z0-9+/]', '', image_raw)
             pad_raw = clean_b64 + "=" * ((4 - len(clean_b64) % 4) % 4)
-            short_id = msg_id.split('_')[-1]
-            
-            file_ext = '.jpeg'
-            if 'image/png' in mimetype: file_ext = '.png'
-            elif 'image/webp' in mimetype: file_ext = '.webp'
-            
-            with open(os.path.join(media_dir, msg_id + file_ext), 'wb') as f:
-                f.write(base64.b64decode(pad_raw))
-            with open(os.path.join(media_dir, short_id + file_ext), 'wb') as f:
-                f.write(base64.b64decode(pad_raw))
+            contact_id_img = f"c_{number}_{inst}"
+            save_media_file(msg_id, base64.b64decode(pad_raw), 'image', instance=inst, contact_id=contact_id_img, mimetype=mimetype)
         except Exception as e:
             print(f"[Send Image] Erro ao salvar arquivo local: {e}")
-        # -------------------------
 
         text = f"[IMAGE_REF] {inst}|{msg_id}"
         if caption:
@@ -1586,24 +1705,15 @@ def send_video():
 
         msg_id = extract_waha_msg_id(res_data, f"vid_out_{int(now.timestamp())}")
         
-        # --- NEW CACHING LOGIC ---
+        # Salvar o arquivo localmente via função centralizada
         try:
             import base64, re
-            media_dir = os.path.join(DATA_DIR, 'media')
-            os.makedirs(media_dir, exist_ok=True)
             clean_b64 = re.sub(r'[^A-Za-z0-9+/]', '', video_raw)
             pad_raw = clean_b64 + "=" * ((4 - len(clean_b64) % 4) % 4)
-            short_id = msg_id.split('_')[-1]
-            
-            file_ext = '.mp4'
-            
-            with open(os.path.join(media_dir, msg_id + file_ext), 'wb') as f:
-                f.write(base64.b64decode(pad_raw))
-            with open(os.path.join(media_dir, short_id + file_ext), 'wb') as f:
-                f.write(base64.b64decode(pad_raw))
+            contact_id_vid = f"c_{number}_{inst}"
+            save_media_file(msg_id, base64.b64decode(pad_raw), 'video', instance=inst, contact_id=contact_id_vid, mimetype=mimetype)
         except Exception as e:
             print(f"[Send Video] Erro ao salvar arquivo local: {e}")
-        # -------------------------
 
         text = f"[VIDEO_REF] {inst}|{msg_id}"
         if caption:
@@ -1712,18 +1822,16 @@ def send_document():
 
         msg_id = extract_waha_msg_id(res_data, f"doc_out_{int(now.timestamp())}")
         
-        # --- Renomear do temporário para o ID real ---
+        # --- Atualizar Cache Local com ID Real ---
         try:
-            short_id = msg_id.split('_')[-1]
-            real_path = os.path.join(media_dir, msg_id + file_ext)
-            real_short_path = os.path.join(media_dir, short_id + file_ext)
-            
-            # Copiamos para o msg_id longo
-            shutil.copy(temp_path, real_path)
-            # Renomeamos (movemos) para o msg_id curto
-            os.rename(temp_path, real_short_path)
+            with open(temp_path, 'rb') as f:
+                doc_bytes = f.read()
+            contact_id_doc = f"c_{number}_{inst}"
+            save_media_file(msg_id, doc_bytes, 'document', instance=inst, contact_id=contact_id_doc, mimetype=mimetype, original_filename=doc_name)
+            # Limpar temporário
+            os.remove(temp_path)
         except Exception as e:
-            print(f"[Send Document] Erro ao renomear cache local: {e}")
+            print(f"[Send Document] Erro ao salvar arquivo real local: {e}")
         # -------------------------
         
         # --- NEW CACHING LOGIC ---
@@ -2311,10 +2419,9 @@ def webhook():
                         if media_b64:
                             import base64
                             file_bytes_saved = base64.b64decode(media_b64)
-                            with open(filepath, 'wb') as f:
-                                f.write(file_bytes_saved)
+                            save_media_file(waha_id, file_bytes_saved, msg_type, instance=session, contact_id=f"c_{raw_jid}_{session}", mimetype=media_mimetype)
                             saved_locally = True
-                            print(f"[Media] Arquivo {filepath} salvo localmente via Base64 do webhook")
+                            print(f"[Media] Arquivo salvo localmente via Base64 do webhook")
                         elif media_url:
                             # Corrige URL caso venha localhost
                             if media_url.startswith('http://localhost') or media_url.startswith('http://127.0.0.1'):
@@ -2325,10 +2432,9 @@ def webhook():
                             dl_res = requests.get(media_url, headers=get_waha_headers(), timeout=15)
                             if dl_res.status_code == 200:
                                 file_bytes_saved = dl_res.content
-                                with open(filepath, 'wb') as f:
-                                    f.write(file_bytes_saved)
+                                save_media_file(waha_id, file_bytes_saved, msg_type, instance=session, contact_id=f"c_{raw_jid}_{session}", mimetype=media_mimetype)
                                 saved_locally = True
-                                print(f"[Media] Arquivo {filepath} salvo localmente via URL {media_url} do webhook")
+                                print(f"[Media] Arquivo salvo localmente via URL {media_url} do webhook")
                             else:
                                 print(f"[Media] Falha ao baixar da URL {media_url}: HTTP {dl_res.status_code}")
                     except Exception as e:
@@ -2363,22 +2469,14 @@ def webhook():
                                         real_res = requests.get(real_url, headers=get_waha_headers(), timeout=15)
                                         if real_res.status_code == 200:
                                             file_bytes_saved = real_res.content
-                                with open(filepath, 'wb') as f:
-                                    f.write(file_bytes_saved)
-                                saved_locally = True
-                                print(f"[Media] Arquivo {filepath} salvo via FALLBACK Agressivo (GET /api/files)")
+                                if file_bytes_saved:
+                                    save_media_file(waha_id, file_bytes_saved, msg_type, instance=session, contact_id=f"c_{raw_jid}_{session}", mimetype=ctype)
+                                    saved_locally = True
+                                    print(f"[Media] Arquivo salvo via FALLBACK Agressivo (GET /api/files)")
                             else:
                                 print(f"[Media] FALLBACK Agressivo falhou: HTTP {dl_res.status_code}")
                         except Exception as e:
                             print(f"[Media] Erro no FALLBACK Agressivo: {e}")
-                    
-                    # Criar cópia com o ID completo (para o proxy encontrar por ambos os nomes)
-                    if saved_locally and filepath_full and file_bytes_saved:
-                        try:
-                            with open(filepath_full, 'wb') as f:
-                                f.write(file_bytes_saved)
-                        except Exception:
-                            pass  # Não é crítico, o short_id já foi salvo
             # -------------------------------------------------------
 
             # --- Normalizar JID para 12 dígitos ---
@@ -2560,7 +2658,6 @@ def webhook():
                     id=contact_id, name=phone, phone=phone,
                     avatar=phone[0] if phone else "?",
                     instance=instance,
-                    sender_id=contact.assigned_to if fromMe else None,
                     tags=['Novo Lead'], last_msg=text, last_msg_time=time_str,
                     unread=0 if fromMe else 1
                 )
@@ -2894,7 +2991,6 @@ def create_contact():
             phone=phone,
             avatar=phone[0] if phone else "?",
             instance=instance,
-                    sender_id=contact.assigned_to if fromMe else None,
             tags=['Novo Lead'],
             last_msg='Iniciando conversa...',
             last_msg_time=get_now().strftime('%H:%M'),
@@ -3718,17 +3814,31 @@ def stream_media(media_type):
         import glob
         cache_path = None
         
-        # Busca com glob: primeiro pelo ID completo, depois pelo short_id
-        # Usar glob.escape para lidar com caracteres especiais como @
-        matches = glob.glob(glob.escape(local_path) + '.*')
-        if os.path.exists(local_path): matches.insert(0, local_path)
-        
-        matches_short = glob.glob(glob.escape(local_path_short) + '.*')
-        if os.path.exists(local_path_short): matches_short.insert(0, local_path_short)
-        
-        for p in matches + matches_short:
-            cache_path = p
-            break
+        # 1. Buscar no banco de dados primeiro
+        try:
+            short_id_db = msg_id.split('_')[-1] if '_' in msg_id else msg_id
+            mf = MediaFile.query.filter((MediaFile.msg_id == msg_id) | (MediaFile.short_id == short_id_db)).first()
+            if mf and mf.filename:
+                db_path = os.path.join(media_dir, mf.filename)
+                if os.path.exists(db_path):
+                    cache_path = db_path
+                    if mf.mimetype:
+                        content_type = mf.mimetype
+        except Exception as e_db_proxy:
+            print(f"[{media_type.capitalize()} Proxy] Erro ao consultar banco: {e_db_proxy}")
+            
+        # 2. Busca com glob (fallback se não estiver no banco, mas existir no disco legado)
+        if not cache_path:
+            # Usar glob.escape para lidar com caracteres especiais como @
+            matches = glob.glob(glob.escape(local_path) + '.*')
+            if os.path.exists(local_path): matches.insert(0, local_path)
+            
+            matches_short = glob.glob(glob.escape(local_path_short) + '.*')
+            if os.path.exists(local_path_short): matches_short.insert(0, local_path_short)
+            
+            for p in matches + matches_short:
+                cache_path = p
+                break
             
         if cache_path:
             print(f"[{media_type.capitalize()} Proxy] Servindo do cache local: {cache_path}")
@@ -3839,24 +3949,9 @@ def stream_media(media_type):
                 if ctype_waha and ctype_waha != 'application/octet-stream':
                     content_type = ctype_waha
                     
-            # Salvar no cache local para acelerar futuras requisições (com ambos os IDs)
+            # Salvar no cache local para acelerar futuras requisições (com ambos os IDs) e registrar no banco
             try:
-                os.makedirs(media_dir, exist_ok=True)
-                # Determinar extensão baseada no content_type real
-                import mimetypes as _mt_proxy
-                proxy_ext = _mt_proxy.guess_extension(content_type.split(';')[0].strip()) or ''
-                if not proxy_ext:
-                    if media_type == 'audio': proxy_ext = '.oga'
-                    elif media_type == 'image': proxy_ext = '.jpeg'
-                    elif media_type == 'video': proxy_ext = '.mp4'
-                    elif media_type == 'document': proxy_ext = '.bin'
-                # Salvar com short_id (principal) e com o ID completo
-                for save_path in set([local_path_short + proxy_ext, local_path + proxy_ext]):
-                    try:
-                        with open(save_path, 'wb') as f:
-                            f.write(file_bytes)
-                    except Exception:
-                        pass
+                save_media_file(msg_id, file_bytes, media_type, instance=instance, mimetype=content_type)
             except Exception as e:
                 pass
             
