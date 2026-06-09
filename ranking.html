@@ -165,9 +165,10 @@
     window.onload = () => {
       const token = localStorage.getItem('wp_crm_token');
       if (!token) window.location.href = 'index.html';
-      
+      // Set default dates (first day of year to today)
       const today = new Date().toISOString().split('T')[0];
-      document.getElementById('filterStart').value = today;
+      const currentYear = new Date().getFullYear();
+      document.getElementById('filterStart').value = `${currentYear}-01-01`;
       document.getElementById('filterEnd').value = today;
       
       loadRanking();
