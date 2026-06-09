@@ -457,6 +457,21 @@ def migrate_to_sql():
         except Exception:
             db_sql.session.rollback()
 
+        # -- Backfill de sender_id nas mensagens antigas --
+        try:
+            updated_count = db_sql.session.execute(db_sql.text('''
+                UPDATE message 
+                SET sender_id = (SELECT assigned_to FROM contact WHERE contact.id = message.contact_id) 
+                WHERE type = 'out' AND sender_id IS NULL 
+                AND contact_id IN (SELECT id FROM contact WHERE assigned_to IS NOT NULL)
+            ''')).rowcount
+            db_sql.session.commit()
+            if updated_count and updated_count > 0:
+                print(f"[Migration] Backfill concluído! {updated_count} mensagens antigas foram vinculadas aos atendentes.")
+        except Exception as e_backfill:
+            db_sql.session.rollback()
+            print(f"[Migration] Erro no backfill de mensagens: {e_backfill}")
+
         # --- Tabela media_file ---
         try:
             db_sql.session.execute(db_sql.text('''
