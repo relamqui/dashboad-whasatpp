@@ -4366,18 +4366,17 @@ def report_ranking():
     for uid, stats in attendant_stats.items():
         user = users.get(uid)
         if user and stats['total_msgs'] > 0:
-            times = sorted(stats['times'])
+            times = stats['times']
             if len(times) > 0:
-                mid = len(times) // 2
-                median_time = (times[mid] + times[~mid]) / 2.0
+                avg_time = sum(times) / len(times)
             else:
-                median_time = 0
+                avg_time = 0
             
             ranking.append({
                 'id': user.id,
                 'name': user.name,
                 'email': user.email,
-                'avg_time': median_time,
+                'avg_time': avg_time,
                 'count': stats['total_msgs']
             })
             
