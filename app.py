@@ -4347,11 +4347,11 @@ def report_ranking():
                 resp_time = msg.timestamp - last_in_time
                 if resp_time < 0: resp_time = 0
                 
-                # Ignore responses that took more than 48 hours (likely reactivations or weekends)
-                if resp_time <= 172800:
-                    if msg.sender_id not in attendant_stats:
-                        attendant_stats[msg.sender_id] = {'times': []}
-                    attendant_stats[msg.sender_id]['times'].append(resp_time)
+                # We use median, so extreme outliers won't distort the ranking,
+                # but we still record them in case the attendant genuinely takes days to reply.
+                if msg.sender_id not in attendant_stats:
+                    attendant_stats[msg.sender_id] = {'times': []}
+                attendant_stats[msg.sender_id]['times'].append(resp_time)
                 
             last_in_time = None # Reset to only count the first response to a burst
             
