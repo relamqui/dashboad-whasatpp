@@ -4432,86 +4432,84 @@ def report_sla():
 @auth_required
 @admin_required
 def report_ranking():
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-    
-    query = Message.query
-    if start_date:
-        try:
-            # start_date is 'YYYY-MM-DD'
-            start_ts = int(datetime.datetime.strptime(start_date, '%Y-%m-%d').timestamp())
-            query = query.filter(Message.timestamp >= start_ts)
-        except Exception:
-            pass
-    if end_date:
-        try:
-            end_ts = int(datetime.datetime.strptime(end_date + ' 23:59:59', '%Y-%m-%d %H:%M:%S').timestamp())
-            query = query.filter(Message.timestamp <= end_ts)
-        except Exception:
-            pass
+    try:
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
         
-    messages = query.order_by(Message.contact_id, Message.timestamp).all()
-    
-    # Logic to compute response time per contact
-    attendant_stats = {} # sender_id -> {'total_msgs': 0, 'conversations': {contact_id: [times]}}
-    last_in_time = None
-    
-    current_contact = None
-    for msg in messages:
-        if current_contact != msg.contact_id:
-            current_contact = msg.contact_id
-            last_in_time = None
+        query = Message.query
+        if start_date:
+            try:
+                start_ts = int(datetime.datetime.strptime(start_date, '%Y-%m-%d').timestamp())
+                query = query.filter(Message.timestamp >= start_ts)
+            except Exception:
+                pass
+        if end_date:
+            try:
+                end_ts = int(datetime.datetime.strptime(end_date + ' 23:59:59', '%Y-%m-%d %H:%M:%S').timestamp())
+                query = query.filter(Message.timestamp <= end_ts)
+            except Exception:
+                pass
             
-        if msg.type == 'in':
-            last_in_time = msg.timestamp
-        elif msg.type == 'out':
-            if msg.sender_id:
-                if msg.sender_id not in attendant_stats:
-                    attendant_stats[msg.sender_id] = {'total_msgs': 0, 'conversations': {}}
+        messages = query.order_by(Message.contact_id, Message.timestamp).all()
+        
+        attendant_stats = {} 
+        last_in_time = None
+        current_contact = None
+        
+        for msg in messages:
+            if current_contact != msg.contact_id:
+                current_contact = msg.contact_id
+                last_in_time = None
                 
-                # Increment absolute count of messages sent by this attendant
-                attendant_stats[msg.sender_id]['total_msgs'] += 1
-                
-                if last_in_time is not None:
-                    resp_time = msg.timestamp - last_in_time
-                    if resp_time < 0: resp_time = 0
+            if msg.type == 'in':
+                last_in_time = msg.timestamp
+            elif msg.type == 'out':
+                if msg.sender_id:
+                    if msg.sender_id not in attendant_stats:
+                        attendant_stats[msg.sender_id] = {'total_msgs': 0, 'conversations': {}}
                     
-                    if msg.contact_id not in attendant_stats[msg.sender_id]['conversations']:
-                        attendant_stats[msg.sender_id]['conversations'][msg.contact_id] = []
+                    attendant_stats[msg.sender_id]['total_msgs'] += 1
                     
-                    attendant_stats[msg.sender_id]['conversations'][msg.contact_id].append(resp_time)
+                    if last_in_time is not None:
+                        resp_time = msg.timestamp - last_in_time
+                        if resp_time < 0: resp_time = 0
+                        
+                        if msg.contact_id not in attendant_stats[msg.sender_id]['conversations']:
+                            attendant_stats[msg.sender_id]['conversations'][msg.contact_id] = []
+                        
+                        attendant_stats[msg.sender_id]['conversations'][msg.contact_id].append(resp_time)
+                    
+                last_in_time = None 
                 
-            last_in_time = None # Reset to only count the first response to a burst
-            
-    # Compile results
-    ranking = []
-    users = {u.id: u for u in User.query.all()}
-    for uid, stats in attendant_stats.items():
-        user = users.get(uid)
-        if user and stats['total_msgs'] > 0:
-            conv_averages = []
-            for contact_id, times in stats['conversations'].items():
-                if len(times) > 0:
-                    conv_avg = sum(times) / len(times)
-                    conv_averages.append(conv_avg)
-            
-            if len(conv_averages) > 0:
-                final_avg_time = sum(conv_averages) / len(conv_averages)
-            else:
-                final_avg_time = 0
-            
-            ranking.append({
-                'id': user.id,
-                'name': user.name,
-                'email': user.email,
-                'avg_time': final_avg_time,
-                'count': stats['total_msgs']
-            })
-            
-    # Sort descending by count, then ascending by avg_time
-    ranking.sort(key=lambda x: (-x['count'], x['avg_time']))
-    
-    return jsonify({'success': True, 'data': ranking}), 200
+        ranking = []
+        users = {u.id: u for u in User.query.all()}
+        for uid, stats in attendant_stats.items():
+            user = users.get(uid)
+            if user and stats['total_msgs'] > 0:
+                conv_averages = []
+                for contact_id, times in stats['conversations'].items():
+                    if len(times) > 0:
+                        conv_avg = sum(times) / len(times)
+                        conv_averages.append(conv_avg)
+                
+                if len(conv_averages) > 0:
+                    final_avg_time = sum(conv_averages) / len(conv_averages)
+                else:
+                    final_avg_time = 0
+                
+                ranking.append({
+                    'id': user.id,
+                    'name': user.name,
+                    'email': user.email,
+                    'avg_time': final_avg_time,
+                    'count': stats['total_msgs']
+                })
+                
+        ranking.sort(key=lambda x: (-x['count'], x['avg_time']))
+        return jsonify({'success': True, 'data': ranking}), 200
+    except Exception as e:
+        import traceback
+        return jsonify({'success': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
 
 @app.route('/')
 
