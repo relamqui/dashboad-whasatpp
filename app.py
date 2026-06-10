@@ -4476,9 +4476,10 @@ def report_ranking():
                     resp_time = msg.timestamp - last_in_time
                     if resp_time < 0: resp_time = 0
                     
-                    # We use median, so extreme outliers won't distort the ranking,
-                    # but we still record them in case the attendant genuinely takes days to reply.
-                    attendant_stats[msg.sender_id]['times'].append(resp_time)
+                    if msg.contact_id not in attendant_stats[msg.sender_id]['conversations']:
+                        attendant_stats[msg.sender_id]['conversations'][msg.contact_id] = []
+                    
+                    attendant_stats[msg.sender_id]['conversations'][msg.contact_id].append(resp_time)
                 
             last_in_time = None # Reset to only count the first response to a burst
             
@@ -4488,17 +4489,22 @@ def report_ranking():
     for uid, stats in attendant_stats.items():
         user = users.get(uid)
         if user and stats['total_msgs'] > 0:
-            times = stats['times']
-            if len(times) > 0:
-                avg_time = sum(times) / len(times)
+            conv_averages = []
+            for contact_id, times in stats['conversations'].items():
+                if len(times) > 0:
+                    conv_avg = sum(times) / len(times)
+                    conv_averages.append(conv_avg)
+            
+            if len(conv_averages) > 0:
+                final_avg_time = sum(conv_averages) / len(conv_averages)
             else:
-                avg_time = 0
+                final_avg_time = 0
             
             ranking.append({
                 'id': user.id,
                 'name': user.name,
                 'email': user.email,
-                'avg_time': avg_time,
+                'avg_time': final_avg_time,
                 'count': stats['total_msgs']
             })
             
