@@ -9,3 +9,4 @@ psycopg2-binary==2.9.9
 gunicorn==21.2.0
 eventlet==0.36.1
 pytz==2024.1
+minio==7.2.15

@@ -33,6 +33,11 @@ services:
       - WAHA_API_URL=${WAHA_API_URL}
       - WAHA_API_KEY=${WAHA_API_KEY}
       - DB_PATH=/app/data/db.json
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-teste-minio.ioms5g.easypanel.host}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET=${MINIO_BUCKET:-corpal-wp}
+      - MINIO_SECURE=${MINIO_SECURE:-true}
     volumes:
       - wpcrm_data:/app/data
     restart: unless-stopped

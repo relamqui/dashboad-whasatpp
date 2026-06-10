@@ -4,6 +4,7 @@ import jwt
 import uuid
 import datetime
 import pytz
+from urllib.parse import urlparse
 
 def get_now():
     return datetime.datetime.now(pytz.timezone('America/Sao_Paulo'))
@@ -63,6 +64,70 @@ SERVER_BOOT_ID = str(uuid.uuid4())
 DATA_DIR = os.environ.get('DATA_DIR', os.path.join(ROOT_DIR, 'data'))
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
+
+# ─── MinIO / S3 — Armazenamento Persistente de Mídia ────────────────────────
+from minio import Minio
+from minio.error import S3Error
+
+MINIO_ENDPOINT = os.getenv('MINIO_ENDPOINT', 'teste-minio.ioms5g.easypanel.host')
+MINIO_ACCESS_KEY = os.getenv('MINIO_ACCESS_KEY', '')
+MINIO_SECRET_KEY = os.getenv('MINIO_SECRET_KEY', '')
+MINIO_BUCKET = os.getenv('MINIO_BUCKET', 'corpal-wp')
+MINIO_SECURE = os.getenv('MINIO_SECURE', 'true').lower() == 'true'
+MINIO_PUBLIC_URL = f"{'https' if MINIO_SECURE else 'http'}://{MINIO_ENDPOINT}/{MINIO_BUCKET}"
+
+minio_client = None
+if MINIO_ACCESS_KEY and MINIO_SECRET_KEY:
+    try:
+        minio_client = Minio(
+            MINIO_ENDPOINT,
+            access_key=MINIO_ACCESS_KEY,
+            secret_key=MINIO_SECRET_KEY,
+            secure=MINIO_SECURE
+        )
+        # Garantir que o bucket existe
+        if not minio_client.bucket_exists(MINIO_BUCKET):
+            minio_client.make_bucket(MINIO_BUCKET)
+        print(f"[MinIO] ✅ Conectado: {MINIO_ENDPOINT}/{MINIO_BUCKET}")
+    except Exception as e:
+        print(f"[MinIO] ❌ ERRO ao conectar: {e} — Fallback para armazenamento local")
+        minio_client = None
+else:
+    print("[MinIO] ⚠️ Credenciais não configuradas — usando armazenamento local")
+
+
+def upload_to_minio(filename, file_bytes, content_type='application/octet-stream'):
+    """Faz upload de um arquivo para o MinIO. Retorna a URL pública ou None."""
+    if not minio_client:
+        return None
+    try:
+        minio_client.put_object(
+            MINIO_BUCKET,
+            filename,
+            io.BytesIO(file_bytes),
+            length=len(file_bytes),
+            content_type=content_type
+        )
+        public_url = f"{MINIO_PUBLIC_URL}/{filename}"
+        print(f"[MinIO] Upload OK: {filename} ({len(file_bytes)} bytes) → {public_url}")
+        return public_url
+    except Exception as e:
+        print(f"[MinIO] Erro upload {filename}: {e}")
+        return None
+
+
+def delete_from_minio(filename):
+    """Remove um arquivo do MinIO. Retorna True se removido."""
+    if not minio_client:
+        return False
+    try:
+        minio_client.remove_object(MINIO_BUCKET, filename)
+        print(f"[MinIO] Deletado: {filename}")
+        return True
+    except Exception as e:
+        print(f"[MinIO] Erro ao deletar {filename}: {e}")
+        return False
+# ─────────────────────────────────────────────────────────────────────────────
 
 DB_PATH = os.environ.get('DB_PATH', os.path.join(DATA_DIR, 'db.json'))
 DATABASE_URL = os.environ.get('DATABASE_URL', f"sqlite:///{os.path.join(DATA_DIR, 'wpcrm.db')}")
@@ -187,6 +252,7 @@ class MediaFile(db_sql.Model):
     filename = db_sql.Column(db_sql.String(300), nullable=False)
     file_size = db_sql.Column(db_sql.Integer, nullable=True)
     original_filename = db_sql.Column(db_sql.String(300), nullable=True)
+    storage_url = db_sql.Column(db_sql.Text, nullable=True)  # URL pública no MinIO
     created_at = db_sql.Column(db_sql.Text, nullable=False)
 
 # ─── Utils ──────────────────────────────────────────────────────────────────
@@ -206,15 +272,27 @@ def extract_waha_msg_id(res_data, fallback):
     return m_id or res_data.get('key', {}).get('id') or res_data.get('messageId') or fallback
 
 def get_media_base64(instance, msg_data):
-    """Busca mídia da WAHA e salva localmente em data/media/. Retorna base64 se conseguir."""
+    """Busca mídia do MinIO, disco local ou WAHA. Retorna base64 se conseguir."""
     try:
         msg_id = msg_data.get('id')
         if not msg_id: return None
-        
-        # Verificar se já existe localmente
-        import glob
-        media_dir = os.path.join(DATA_DIR, 'media')
+        import base64, glob
         short_id = msg_id.split('_')[-1] if '_' in msg_id else msg_id
+        
+        # 1. Verificar se existe no MinIO (via banco de dados)
+        try:
+            mf = MediaFile.query.filter(
+                (MediaFile.msg_id == msg_id) | (MediaFile.short_id == short_id)
+            ).first()
+            if mf and mf.storage_url:
+                dl = requests.get(mf.storage_url, timeout=15)
+                if dl.status_code == 200:
+                    return base64.b64encode(dl.content).decode('utf-8')
+        except Exception:
+            pass
+        
+        # 2. Verificar se existe localmente no disco
+        media_dir = os.path.join(DATA_DIR, 'media')
         for check_id in [msg_id, short_id]:
             check_path = os.path.join(media_dir, check_id)
             matches = glob.glob(check_path + '.*')
@@ -222,17 +300,14 @@ def get_media_base64(instance, msg_data):
                 matches.insert(0, check_path)
             if matches:
                 with open(matches[0], 'rb') as f:
-                    import base64
                     return base64.b64encode(f.read()).decode('utf-8')
         
+        # 3. Buscar do WAHA e salvar (MinIO + local)
         url = f"{WAHA_API_URL}/api/files?session=corpal&messageId={msg_id}"
         res = requests.get(url, headers=get_waha_headers(), timeout=15)
         if res.status_code == 200:
-            import base64
             file_bytes = res.content
-            # Determinar extensão pela resposta do WAHA
             ctype = res.headers.get('Content-Type', '')
-            # Determinar tipo de mídia pelo content-type
             m_type = 'audio'
             if ctype.startswith('image/'): m_type = 'image'
             elif ctype.startswith('video/'): m_type = 'video'
@@ -244,7 +319,8 @@ def get_media_base64(instance, msg_data):
     return None
 
 def save_media_file(msg_id, file_bytes, media_type, instance=None, contact_id=None, mimetype=None, original_filename=None):
-    """Salva arquivo de mídia em data/media/ e registra na tabela media_file.
+    """Salva arquivo de mídia no MinIO (prioridade) e disco local (fallback).
+    Registra na tabela media_file com storage_url do MinIO.
     Retorna o filename salvo ou None se falhar."""
     if not msg_id or not file_bytes:
         return None
@@ -281,25 +357,41 @@ def save_media_file(msg_id, file_bytes, media_type, instance=None, contact_id=No
 
         filename = f"{short_id}{ext}"
         filepath = os.path.join(media_dir, filename)
+        
+        # Determinar content-type para upload
+        upload_ct = mimetype.split(';')[0].strip() if mimetype else 'application/octet-stream'
 
-        # Salvar arquivo no disco
-        with open(filepath, 'wb') as f:
-            f.write(file_bytes)
+        # 1. Upload para MinIO (prioridade — persistência entre deploys)
+        minio_url = upload_to_minio(filename, file_bytes, content_type=upload_ct)
 
-        # Cópia com ID completo para o proxy encontrar por ambos
-        if short_id != msg_id:
-            try:
-                with open(os.path.join(media_dir, f"{msg_id}{ext}"), 'wb') as f:
-                    f.write(file_bytes)
-            except Exception:
-                pass
+        # 2. Salvar arquivo no disco local (fallback + cache)
+        try:
+            with open(filepath, 'wb') as f:
+                f.write(file_bytes)
+            # Cópia com ID completo para o proxy encontrar por ambos
+            if short_id != msg_id:
+                try:
+                    with open(os.path.join(media_dir, f"{msg_id}{ext}"), 'wb') as f:
+                        f.write(file_bytes)
+                except Exception:
+                    pass
+        except Exception as e_local:
+            if not minio_url:
+                print(f"[MediaFile] ERRO: Falha ao salvar local E no MinIO: {e_local}")
+                return None
+            print(f"[MediaFile] Aviso: Falha no disco local, mas salvo no MinIO: {e_local}")
 
-        # Registrar na tabela media_file
+        # 3. Registrar na tabela media_file (com storage_url do MinIO)
         try:
             existing = MediaFile.query.filter(
                 (MediaFile.msg_id == msg_id) | (MediaFile.short_id == short_id)
             ).first()
-            if not existing:
+            if existing:
+                # Atualizar storage_url se não tinha antes
+                if minio_url and not existing.storage_url:
+                    existing.storage_url = minio_url
+                    db_sql.session.commit()
+            else:
                 mf = MediaFile(
                     msg_id=msg_id,
                     short_id=short_id if short_id != msg_id else None,
@@ -310,6 +402,7 @@ def save_media_file(msg_id, file_bytes, media_type, instance=None, contact_id=No
                     filename=filename,
                     file_size=len(file_bytes),
                     original_filename=original_filename,
+                    storage_url=minio_url,
                     created_at=get_now().isoformat()
                 )
                 db_sql.session.add(mf)
@@ -318,7 +411,8 @@ def save_media_file(msg_id, file_bytes, media_type, instance=None, contact_id=No
             db_sql.session.rollback()
             print(f"[MediaFile] Erro ao registrar no banco: {e_db}")
 
-        print(f"[MediaFile] Salvo: {filename} ({media_type}, {len(file_bytes)} bytes)")
+        storage_label = 'MinIO' if minio_url else 'Local'
+        print(f"[MediaFile] Salvo [{storage_label}]: {filename} ({media_type}, {len(file_bytes)} bytes)")
         return filename
     except Exception as e:
         print(f"[MediaFile] Erro ao salvar: {e}")
@@ -494,6 +588,14 @@ def migrate_to_sql():
             db_sql.session.commit()
         except Exception:
             db_sql.session.rollback()
+
+        # Migração: adicionar coluna storage_url para URLs do MinIO
+        try:
+            db_sql.session.execute(db_sql.text('ALTER TABLE media_file ADD COLUMN storage_url TEXT'))
+            db_sql.session.commit()
+            print("[MIGRATE] Coluna storage_url adicionada à tabela media_file")
+        except Exception:
+            db_sql.session.rollback()  # Coluna já existe
 
         # Popular tabela media_file com arquivos já existentes em data/media/
         try:
@@ -1784,7 +1886,7 @@ def send_document():
             mime_part, doc_raw = doc_raw.split(';base64,', 1)
             mimetype = mime_part.replace('data:', '')
 
-        # --- Salvar localmente PRIMEIRO com um ID temporário para enviar via URL ao WAHA ---
+        # --- Salvar PRIMEIRO com um ID temporário ---
         import uuid, os, base64, re, jwt, shutil
         temp_id = f"temp_{uuid.uuid4().hex}"
         media_dir = os.path.join(DATA_DIR, 'media')
@@ -1802,20 +1904,30 @@ def send_document():
         clean_b64 = re.sub(r'[^A-Za-z0-9+/]', '', doc_raw)
         pad_raw = clean_b64 + "=" * ((4 - len(clean_b64) % 4) % 4)
         
-        temp_path = os.path.join(media_dir, temp_id + file_ext)
+        temp_filename = temp_id + file_ext
+        temp_path = os.path.join(media_dir, temp_filename)
         try:
+            doc_bytes_decoded = base64.b64decode(pad_raw)
             with open(temp_path, 'wb') as f:
-                f.write(base64.b64decode(pad_raw))
+                f.write(doc_bytes_decoded)
         except Exception as e:
             print(f"[Send Document] Erro b64decode/save: {e}")
             return jsonify({'error': 'Erro ao processar arquivo base64'}), 400
 
-        # Gerar URL pública usando o nosso próprio stream_media
-        temp_token = jwt.encode({"id": 1, "role": "admin"}, JWT_SECRET, algorithm="HS256")
-        host = request.headers.get('X-Forwarded-Host', request.headers.get('Host', 'localhost'))
-        scheme = request.headers.get('X-Forwarded-Proto', 'https')
-        base_url = f"{scheme}://{host}"
-        doc_url = f"{base_url}/api/media/document?instance={inst}&msg_id={temp_id}&token={temp_token}"
+        # Gerar URL pública — preferir MinIO (acessível externamente), fallback para proxy local
+        upload_ct = mimetype.split(';')[0].strip() if mimetype else 'application/octet-stream'
+        minio_temp_url = upload_to_minio(temp_filename, doc_bytes_decoded, content_type=upload_ct)
+        
+        if minio_temp_url:
+            doc_url = minio_temp_url
+            print(f"[Send Document] Usando URL MinIO: {doc_url}")
+        else:
+            temp_token = jwt.encode({"id": 1, "role": "admin"}, JWT_SECRET, algorithm="HS256")
+            host = request.headers.get('X-Forwarded-Host', request.headers.get('Host', 'localhost'))
+            scheme = request.headers.get('X-Forwarded-Proto', 'https')
+            base_url = f"{scheme}://{host}"
+            doc_url = f"{base_url}/api/media/document?instance={inst}&msg_id={temp_id}&token={temp_token}"
+            print(f"[Send Document] Usando URL proxy local: {doc_url}")
 
         url = f"{WAHA_API_URL}/api/sendFile"
         payload = {
@@ -1837,16 +1949,19 @@ def send_document():
 
         msg_id = extract_waha_msg_id(res_data, f"doc_out_{int(now.timestamp())}")
         
-        # --- Atualizar Cache Local com ID Real ---
+        # --- Atualizar Cache com ID Real (MinIO + Local) ---
         try:
             with open(temp_path, 'rb') as f:
                 doc_bytes = f.read()
             contact_id_doc = f"c_{number}_{inst}"
             save_media_file(msg_id, doc_bytes, 'document', instance=inst, contact_id=contact_id_doc, mimetype=mimetype, original_filename=doc_name)
-            # Limpar temporário
+            # Limpar temporário local
             os.remove(temp_path)
+            # Limpar temporário do MinIO
+            if minio_temp_url:
+                delete_from_minio(temp_filename)
         except Exception as e:
-            print(f"[Send Document] Erro ao salvar arquivo real local: {e}")
+            print(f"[Send Document] Erro ao salvar arquivo real: {e}")
         # -------------------------
         
         # --- NEW CACHING LOGIC ---
@@ -3829,16 +3944,23 @@ def stream_media(media_type):
         import glob
         cache_path = None
         
-        # 1. Buscar no banco de dados primeiro
+        # 1. Buscar no banco de dados — se tem storage_url (MinIO), redirecionar
         try:
             short_id_db = msg_id.split('_')[-1] if '_' in msg_id else msg_id
             mf = MediaFile.query.filter((MediaFile.msg_id == msg_id) | (MediaFile.short_id == short_id_db)).first()
-            if mf and mf.filename:
-                db_path = os.path.join(media_dir, mf.filename)
-                if os.path.exists(db_path):
-                    cache_path = db_path
-                    if mf.mimetype:
-                        content_type = mf.mimetype
+            if mf:
+                # Se tem URL do MinIO, redirecionar diretamente (mais rápido)
+                if mf.storage_url:
+                    from flask import redirect
+                    print(f"[{media_type.capitalize()} Proxy] Redirecionando para MinIO: {mf.storage_url}")
+                    return redirect(mf.storage_url)
+                # Se não tem MinIO mas tem no disco local
+                if mf.filename:
+                    db_path = os.path.join(media_dir, mf.filename)
+                    if os.path.exists(db_path):
+                        cache_path = db_path
+                        if mf.mimetype:
+                            content_type = mf.mimetype
         except Exception as e_db_proxy:
             print(f"[{media_type.capitalize()} Proxy] Erro ao consultar banco: {e_db_proxy}")
             
@@ -3984,69 +4106,52 @@ def stream_media(media_type):
 @app.route('/api/admin/media', methods=['GET'])
 @auth_required
 def admin_list_media():
-    """Lista arquivos na pasta data/media/ com paginação e filtros. Apenas admin."""
+    """Lista arquivos de mídia armazenados no banco de dados com paginação e filtros. Apenas admin."""
     if request.user.get('role') != 'admin':
         return jsonify({'error': 'Acesso negado'}), 403
-
-    import glob, mimetypes as _mt
-    media_dir = os.path.join(DATA_DIR, 'media')
-    if not os.path.exists(media_dir):
-        return jsonify({'files': [], 'total': 0, 'total_size': 0, 'page': 1, 'per_page': 50})
 
     filter_type = request.args.get('type', 'all')  # all, audio, image, video, document
     page = max(1, int(request.args.get('page', 1)))
     per_page = min(100, max(10, int(request.args.get('per_page', 50))))
     search = request.args.get('search', '').strip().lower()
 
-    all_files = []
-    for entry in os.scandir(media_dir):
-        if not entry.is_file():
-            continue
-        name = entry.name
-        stat = entry.stat()
-        _, ext = os.path.splitext(name)
-        ext_lower = ext.lower()
+    query = MediaFile.query
 
-        # Determinar tipo
-        if ext_lower in ('.oga', '.ogg', '.webm', '.opus', '.mp3', '.wav', '.aac', '.m4a'):
-            ftype = 'audio'
-        elif ext_lower in ('.jpeg', '.jpg', '.png', '.webp', '.gif', '.bmp', '.svg'):
-            ftype = 'image'
-        elif ext_lower in ('.mp4', '.avi', '.mov', '.mkv', '.webm_video', '.3gp'):
-            ftype = 'video'
-        elif ext_lower == '.webm':
-            ftype = 'audio'  # webm no contexto do WhatsApp é áudio
-        elif ext_lower in ('', ):
-            # Sem extensão — tentar detectar pelos bytes
-            ftype = 'unknown'
-        else:
-            ftype = 'document'
+    if filter_type != 'all':
+        query = query.filter(MediaFile.media_type == filter_type)
+    
+    if search:
+        query = query.filter(
+            (MediaFile.filename.ilike(f"%{search}%")) |
+            (MediaFile.original_filename.ilike(f"%{search}%")) |
+            (MediaFile.msg_id.ilike(f"%{search}%"))
+        )
 
-        if filter_type != 'all' and ftype != filter_type:
-            continue
-        if search and search not in name.lower():
-            continue
+    # Ordernar por mais recentes
+    query = query.order_by(MediaFile.id.desc())
 
-        all_files.append({
-            'name': name,
-            'size': stat.st_size,
-            'modified': stat.st_mtime,
-            'type': ftype,
-            'ext': ext_lower or '(sem ext)'
+    # Paginação
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    
+    # Contagem total e por tipo
+    total = pagination.total
+    total_size = db_sql.session.query(db_sql.func.sum(MediaFile.file_size)).scalar() or 0
+
+    page_files = []
+    for mf in pagination.items:
+        _, ext = os.path.splitext(mf.filename) if mf.filename else ('', '')
+        page_files.append({
+            'name': mf.filename or f"{mf.msg_id}{ext}",
+            'size': mf.file_size or 0,
+            'modified': mf.created_at, # Usando data de criação como timestamp
+            'type': mf.media_type or 'unknown',
+            'ext': ext.lower() or '(sem ext)',
+            'storage_url': mf.storage_url
         })
 
-    # Ordenar por data de modificação (mais recente primeiro)
-    all_files.sort(key=lambda f: f['modified'], reverse=True)
-
-    total = len(all_files)
-    total_size = sum(f['size'] for f in all_files)
-    start = (page - 1) * per_page
-    page_files = all_files[start:start + per_page]
-
-    # Contar por tipo (para stats)
-    type_counts = {}
-    for f in all_files:
-        type_counts[f['type']] = type_counts.get(f['type'], 0) + 1
+    # Stats para UI
+    type_counts_db = db_sql.session.query(MediaFile.media_type, db_sql.func.count(MediaFile.id)).group_by(MediaFile.media_type).all()
+    type_counts = {t: c for t, c in type_counts_db}
 
     return jsonify({
         'files': page_files,
@@ -4054,7 +4159,7 @@ def admin_list_media():
         'total_size': total_size,
         'page': page,
         'per_page': per_page,
-        'total_pages': (total + per_page - 1) // per_page,
+        'total_pages': pagination.pages,
         'type_counts': type_counts
     })
 
@@ -4074,6 +4179,19 @@ def admin_serve_media(filename):
 
     import mimetypes as _mt
     media_dir = os.path.join(DATA_DIR, 'media')
+
+    # Verificar se existe no MinIO (via banco de dados)
+    try:
+        base_name = os.path.splitext(filename)[0]
+        mf = MediaFile.query.filter(
+            (MediaFile.filename == filename) | (MediaFile.msg_id == base_name) | (MediaFile.short_id == base_name)
+        ).first()
+        if mf and mf.storage_url:
+            from flask import redirect
+            return redirect(mf.storage_url)
+    except Exception:
+        pass
+
     filepath = os.path.join(media_dir, filename)
 
     # Segurança: impedir path traversal
@@ -4158,6 +4276,22 @@ def admin_delete_media():
     media_dir = os.path.join(DATA_DIR, 'media')
     deleted = 0
     for fn in filenames:
+        # Deletar do MinIO
+        try:
+            base_name = os.path.splitext(fn)[0]
+            mf = MediaFile.query.filter(
+                (MediaFile.filename == fn) | (MediaFile.msg_id == base_name) | (MediaFile.short_id == base_name)
+            ).first()
+            if mf:
+                if mf.storage_url:
+                    delete_from_minio(fn)
+                db_sql.session.delete(mf)
+                db_sql.session.commit()
+        except Exception as e_del_minio:
+            db_sql.session.rollback()
+            print(f"[Admin Delete] Erro ao remover do MinIO/DB: {e_del_minio}")
+        
+        # Deletar do disco local
         fp = os.path.join(media_dir, fn)
         if os.path.abspath(fp).startswith(os.path.abspath(media_dir)) and os.path.exists(fp):
             try:
@@ -4171,27 +4305,15 @@ def admin_delete_media():
 @app.route('/api/admin/media/stats', methods=['GET'])
 @auth_required
 def admin_media_stats():
-    """Retorna estatísticas da pasta de mídia. Apenas admin."""
+    """Retorna estatísticas da mídia armazenada (baseado no banco de dados). Apenas admin."""
     if request.user.get('role') != 'admin':
         return jsonify({'error': 'Acesso negado'}), 403
 
-    media_dir = os.path.join(DATA_DIR, 'media')
-    if not os.path.exists(media_dir):
-        return jsonify({'total_files': 0, 'total_size': 0, 'types': {}})
+    total_files = MediaFile.query.count()
+    total_size = db_sql.session.query(db_sql.func.sum(MediaFile.file_size)).scalar() or 0
 
-    total_files = 0
-    total_size = 0
-    types = {}
-
-    for entry in os.scandir(media_dir):
-        if not entry.is_file():
-            continue
-        stat = entry.stat()
-        total_files += 1
-        total_size += stat.st_size
-        _, ext = os.path.splitext(entry.name)
-        ext = ext.lower() or '(sem ext)'
-        types[ext] = types.get(ext, 0) + 1
+    types_db = db_sql.session.query(MediaFile.media_type, db_sql.func.count(MediaFile.id)).group_by(MediaFile.media_type).all()
+    types = {t: c for t, c in types_db if t}
 
     return jsonify({
         'total_files': total_files,
