@@ -276,6 +276,11 @@
             <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
               Converte todos os chats e mensagens de qualquer outra sessão (ex: default, yamar) para a sessão "corpal".
             </p>
+            <hr style="border-color: var(--border); margin: 16px 0;">
+            <button class="btn-save-notes" style="background:#2ecc71; padding:8px 16px; border:none; border-radius:6px; color:white; font-weight:600; cursor:pointer;" onclick="execForceReload()">♻️ Forçar Deslogar e Recarregar Todos</button>
+            <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
+              Envia um comando para todos os usuários logados. Uma notificação de 30 segundos aparecerá e então eles serão deslogados e a página recarregada.
+            </p>
           </div>
 
         </section>
@@ -633,6 +638,22 @@
       const res = await apiFetch('/api/admin/migrate-to-corpal', 'POST');
       if (res && res.updated !== undefined) {
         alert(`Migração Concluída!\\n\\n${res.updated} contatos foram movidos para a sessão "corpal" com sucesso.`);
+      }
+
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }
+
+    async function execForceReload() {
+      if(!confirm('Atenção: Isso vai forçar TODOS os usuários a deslogarem e recarregarem a página em 30 segundos. Deseja prosseguir?')) return;
+      const btn = document.querySelector('button[onclick="execForceReload()"]');
+      const originalText = btn.textContent;
+      btn.textContent = 'Enviando...';
+      btn.disabled = true;
+
+      const res = await apiFetch('/api/admin/force-reload', 'POST');
+      if (res && res.success) {
+        alert('Comando enviado com sucesso! Os usuários receberão um aviso de 30 segundos antes do recarregamento.');
       }
 
       btn.textContent = originalText;

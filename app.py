@@ -321,9 +321,9 @@ def get_media_base64(instance, msg_data):
 def save_media_file(msg_id, file_bytes, media_type, instance=None, contact_id=None, mimetype=None, original_filename=None):
     """Salva arquivo de mídia no MinIO (prioridade) e disco local (fallback).
     Registra na tabela media_file com storage_url do MinIO.
-    Retorna o filename salvo ou None se falhar."""
+    Retorna tupla (filename, minio_url) ou (None, None) se falhar."""
     if not msg_id or not file_bytes:
-        return None
+        return None, None
     try:
         media_dir = os.path.join(DATA_DIR, 'media')
         os.makedirs(media_dir, exist_ok=True)
@@ -378,7 +378,7 @@ def save_media_file(msg_id, file_bytes, media_type, instance=None, contact_id=No
         except Exception as e_local:
             if not minio_url:
                 print(f"[MediaFile] ERRO: Falha ao salvar local E no MinIO: {e_local}")
-                return None
+                return None, None
             print(f"[MediaFile] Aviso: Falha no disco local, mas salvo no MinIO: {e_local}")
 
         # 3. Registrar na tabela media_file (com storage_url do MinIO)
@@ -413,10 +413,10 @@ def save_media_file(msg_id, file_bytes, media_type, instance=None, contact_id=No
 
         storage_label = 'MinIO' if minio_url else 'Local'
         print(f"[MediaFile] Salvo [{storage_label}]: {filename} ({media_type}, {len(file_bytes)} bytes)")
-        return filename
+        return filename, minio_url
     except Exception as e:
         print(f"[MediaFile] Erro ao salvar: {e}")
-        return None
+        return None, None
 
 def track_sla_event(numero, filial=None, setor=None, atendente=None, event_type='QUEUE_ENTER'):
     """
@@ -2549,9 +2549,9 @@ def webhook():
                         if media_b64:
                             import base64
                             file_bytes_saved = base64.b64decode(media_b64)
-                            save_media_file(waha_id, file_bytes_saved, msg_type, instance=session, contact_id=f"c_{raw_jid}_{session}", mimetype=media_mimetype)
+                            _fn, _murl = save_media_file(waha_id, file_bytes_saved, msg_type, instance=session, contact_id=f"c_{raw_jid}_{session}", mimetype=media_mimetype)
                             saved_locally = True
-                            print(f"[Media] Arquivo salvo localmente via Base64 do webhook")
+                            print(f"[Media] Arquivo salvo via Base64 do webhook (MinIO={'SIM' if _murl else 'NAO'})")
                         elif media_url:
                             # Corrige URL caso venha localhost
                             if media_url.startswith('http://localhost') or media_url.startswith('http://127.0.0.1'):
@@ -2562,9 +2562,9 @@ def webhook():
                             dl_res = requests.get(media_url, headers=get_waha_headers(), timeout=15)
                             if dl_res.status_code == 200:
                                 file_bytes_saved = dl_res.content
-                                save_media_file(waha_id, file_bytes_saved, msg_type, instance=session, contact_id=f"c_{raw_jid}_{session}", mimetype=media_mimetype)
+                                _fn, _murl = save_media_file(waha_id, file_bytes_saved, msg_type, instance=session, contact_id=f"c_{raw_jid}_{session}", mimetype=media_mimetype)
                                 saved_locally = True
-                                print(f"[Media] Arquivo salvo localmente via URL {media_url} do webhook")
+                                print(f"[Media] Arquivo salvo via URL do webhook (MinIO={'SIM' if _murl else 'NAO'})")
                             else:
                                 print(f"[Media] Falha ao baixar da URL {media_url}: HTTP {dl_res.status_code}")
                     except Exception as e:
@@ -2600,13 +2600,16 @@ def webhook():
                                         if real_res.status_code == 200:
                                             file_bytes_saved = real_res.content
                                 if file_bytes_saved:
-                                    save_media_file(waha_id, file_bytes_saved, msg_type, instance=session, contact_id=f"c_{raw_jid}_{session}", mimetype=ctype)
+                                    _fn, _murl = save_media_file(waha_id, file_bytes_saved, msg_type, instance=session, contact_id=f"c_{raw_jid}_{session}", mimetype=ctype)
                                     saved_locally = True
-                                    print(f"[Media] Arquivo salvo via FALLBACK Agressivo (GET /api/files)")
+                                    print(f"[Media] Arquivo salvo via FALLBACK Agressivo (MinIO={'SIM' if _murl else 'NAO'})")
                             else:
                                 print(f"[Media] FALLBACK Agressivo falhou: HTTP {dl_res.status_code}")
                         except Exception as e:
                             print(f"[Media] Erro no FALLBACK Agressivo: {e}")
+                    
+                    if not saved_locally:
+                        print(f"[Media] ⚠️ AVISO: Mídia NÃO foi salva para msg_id={waha_id} tipo={msg_type} — será buscada sob demanda")
             # -------------------------------------------------------
 
             # --- Normalizar JID para 12 dígitos ---
@@ -4086,14 +4089,23 @@ def stream_media(media_type):
                 if ctype_waha and ctype_waha != 'application/octet-stream':
                     content_type = ctype_waha
                     
-            # Salvar no cache local para acelerar futuras requisições (com ambos os IDs) e registrar no banco
+            # Salvar no MinIO + cache local e registrar no banco
+            saved_filename = None
+            saved_minio_url = None
             try:
-                save_media_file(msg_id, file_bytes, media_type, instance=instance, mimetype=content_type)
-            except Exception as e:
-                pass
+                saved_filename, saved_minio_url = save_media_file(msg_id, file_bytes, media_type, instance=instance, mimetype=content_type)
+            except Exception as e_save:
+                print(f"[{media_type.capitalize()} Proxy] AVISO: Falha ao salvar mídia: {e_save}")
             
+            # Se salvou no MinIO, redirecionar para URL pública (mais rápido, usa CDN/cache)
+            if saved_minio_url:
+                from flask import redirect
+                print(f"[{media_type.capitalize()} Proxy] Mídia baixada do WAHA → salva no MinIO → Redirecionando: {saved_minio_url}")
+                return redirect(saved_minio_url)
+            
+            # Fallback: servir bytes diretamente se MinIO falhou
+            print(f"[{media_type.capitalize()} Proxy] MinIO indisponível, servindo bytes diretamente ({len(file_bytes)} bytes)")
             return Response(file_bytes, mimetype=content_type,
-
                 headers={'Content-Disposition': 'inline', 'Accept-Ranges': 'bytes',
                          'Cache-Control': 'public, max-age=3600'})
         return jsonify({'error': f'Nao foi possivel buscar {media_type}', 'waha_status': res.status_code}), 502
@@ -4102,6 +4114,117 @@ def stream_media(media_type):
         return jsonify({'error': str(e)}), 500
 
 # ─── Admin: Media Browser ────────────────────────────────────────────────────
+
+@app.route('/api/media/prefetch', methods=['POST'])
+@auth_required
+def prefetch_media():
+    """Pré-baixa mídias do WAHA e salva no MinIO em background.
+    Aceita uma lista de {instance, msg_id} para pré-carregar."""
+    data = request.json
+    if not data:
+        return jsonify({'error': 'Body vazio'}), 400
+    
+    items = data.get('items', [])
+    if not items:
+        return jsonify({'error': 'items é obrigatório (lista de {instance, msg_id})'}), 400
+    
+    # Limitar a 20 itens por requisição
+    items = items[:20]
+    queued = 0
+    
+    import threading as _thr
+    for item in items:
+        inst = item.get('instance')
+        mid = item.get('msg_id')
+        if inst and mid:
+            t = _thr.Thread(target=_prefetch_media_worker, args=(inst, mid), daemon=True)
+            t.start()
+            queued += 1
+    
+    return jsonify({'status': 'queued', 'count': queued})
+
+
+def _prefetch_media_worker(instance, msg_id):
+    """Worker thread: baixa mídia do WAHA e salva no MinIO."""
+    try:
+        with app.app_context():
+            short_id = msg_id.split('_')[-1] if '_' in msg_id else msg_id
+            
+            # 1. Verificar se já existe no MinIO (via banco)
+            mf = MediaFile.query.filter(
+                (MediaFile.msg_id == msg_id) | (MediaFile.short_id == short_id)
+            ).first()
+            if mf and mf.storage_url:
+                return  # Já está no MinIO
+            
+            # 2. Verificar se existe localmente mas sem MinIO — fazer upload
+            if mf and mf.filename:
+                media_dir = os.path.join(DATA_DIR, 'media')
+                local_path = os.path.join(media_dir, mf.filename)
+                if os.path.exists(local_path):
+                    with open(local_path, 'rb') as f:
+                        file_bytes = f.read()
+                    upload_ct = mf.mimetype or 'application/octet-stream'
+                    minio_url = upload_to_minio(mf.filename, file_bytes, content_type=upload_ct)
+                    if minio_url:
+                        mf.storage_url = minio_url
+                        db_sql.session.commit()
+                        print(f"[Prefetch] Disco local -> MinIO OK: {mf.filename}")
+                    return
+            
+            # 3. Buscar do WAHA via /api/files
+            waha_url = f"{WAHA_API_URL}/api/files"
+            res = requests.get(waha_url, headers=get_waha_headers(), params={'session': instance, 'messageId': msg_id}, timeout=15)
+            
+            if res.status_code == 404 and short_id != msg_id:
+                res = requests.get(waha_url, headers=get_waha_headers(), params={'session': instance, 'messageId': short_id}, timeout=15)
+            
+            if res.status_code == 200:
+                file_bytes = res.content
+                ctype = res.headers.get('Content-Type', '')
+                
+                # Se WAHA retornou JSON
+                if 'application/json' in ctype:
+                    import base64, re
+                    json_data = res.json()
+                    real_mimetype = json_data.get('mimetype', ctype)
+                    if 'data' in json_data:
+                        raw = json_data['data']
+                        raw = re.sub(r'[^A-Za-z0-9+/]', '', raw)
+                        raw += "=" * ((4 - len(raw) % 4) % 4)
+                        file_bytes = base64.b64decode(raw)
+                        ctype = real_mimetype
+                    elif 'url' in json_data:
+                        real_url = json_data['url']
+                        if real_url.startswith('http://localhost') or real_url.startswith('http://127.0.0.1'):
+                            parsed = urlparse(real_url)
+                            real_url = f"{WAHA_API_URL}{parsed.path}"
+                        real_res = requests.get(real_url, headers=get_waha_headers(), timeout=15)
+                        if real_res.status_code == 200:
+                            file_bytes = real_res.content
+                            ctype = real_res.headers.get('Content-Type', '') or real_mimetype
+                        else:
+                            print(f"[Prefetch] Falha ao baixar URL {real_url}: HTTP {real_res.status_code}")
+                            return
+                
+                # Determinar tipo de mídia
+                m_type = 'document'
+                if ctype.startswith('image/'): m_type = 'image'
+                elif ctype.startswith('audio/'): m_type = 'audio'
+                elif ctype.startswith('video/'): m_type = 'video'
+                
+                saved_fn, saved_url = save_media_file(msg_id, file_bytes, m_type, instance=instance, mimetype=ctype)
+                if saved_url:
+                    print(f"[Prefetch] WAHA -> MinIO OK: {saved_fn}")
+                elif saved_fn:
+                    print(f"[Prefetch] WAHA -> Local OK (MinIO falhou): {saved_fn}")
+                else:
+                    print(f"[Prefetch] FALHA ao salvar: msg_id={msg_id}")
+            else:
+                print(f"[Prefetch] WAHA retornou {res.status_code} para msg_id={msg_id}")
+    except Exception as e:
+        print(f"[Prefetch] Erro: {e}")
+
 
 @app.route('/api/admin/media', methods=['GET'])
 @auth_required
@@ -4320,6 +4443,16 @@ def admin_media_stats():
         'total_size': total_size,
         'types': types
     })
+
+@app.route('/api/admin/force-reload', methods=['POST'])
+@auth_required
+def admin_force_reload():
+    """Força todos os usuários logados a deslogar e recarregar a página. Apenas admin."""
+    if request.user.get('role') != 'admin':
+        return jsonify({'error': 'Acesso negado'}), 403
+
+    socketio.emit('force_logout_reload') # Broadcast para todos os clientes conectados
+    return jsonify({'success': True})
 
 @app.route('/api/debug/test-alerta-espera', methods=['POST'])
 def test_alerta_espera():

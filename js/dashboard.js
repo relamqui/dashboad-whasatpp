@@ -351,6 +351,49 @@ function initSocket(token) {
       }
     });
 
+    socket.on('force_logout_reload', () => {
+      const overlay = document.createElement('div');
+      overlay.style.position = 'fixed';
+      overlay.style.top = '0';
+      overlay.style.left = '0';
+      overlay.style.width = '100vw';
+      overlay.style.height = '100vh';
+      overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
+      overlay.style.color = '#fff';
+      overlay.style.display = 'flex';
+      overlay.style.flexDirection = 'column';
+      overlay.style.alignItems = 'center';
+      overlay.style.justifyContent = 'center';
+      overlay.style.zIndex = '9999999';
+      overlay.style.fontFamily = 'Inter, sans-serif';
+      
+      overlay.innerHTML = `
+          <h1 style="color: #e74c3c; margin-bottom: 20px; text-align: center;">Atualização do Sistema</h1>
+          <p style="font-size: 18px; margin-bottom: 20px; text-align: center;">A página será deslogada e recarregada para aplicar novas atualizações em instantes.</p>
+          <div style="font-size: 48px; font-weight: bold; padding: 20px; background: rgba(255,255,255,0.1); border-radius: 12px; margin-bottom: 20px;">
+            <span id="reload-countdown">30</span>s
+          </div>
+      `;
+      document.body.appendChild(overlay);
+
+      let seconds = 30;
+      const interval = setInterval(() => {
+          seconds--;
+          const el = document.getElementById('reload-countdown');
+          if (el) el.innerText = seconds;
+          
+          if (seconds <= 0) {
+              clearInterval(interval);
+              if (typeof logout === 'function') {
+                  logout();
+              } else {
+                  localStorage.removeItem('wp_crm_token');
+                  window.location.href = '/';
+              }
+          }
+      }, 1000);
+    });
+
   } else {
     console.warn('Socket.io no encontrado. Rodando em modo offline/mock.');
   }
@@ -703,6 +746,9 @@ async function openChat(id) {
   renderMessages(contact.messages);
   renderChatList(getFilteredContacts());
 
+  // Pré-baixar mídias recentes para o MinIO (em background)
+  prefetchMediaForChat(contact.messages, contact.instance);
+
   // Scroll to bottom
   const area = document.getElementById('messagesArea');
   area.scrollTop = area.scrollHeight;
@@ -718,6 +764,64 @@ function closeChatMobile() {
   document.getElementById('app').classList.remove('chat-active');
   currentChat = null;
   document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
+}
+
+// ─── Media Prefetch ───────────────────────────────────────────────────────────
+function prefetchMediaForChat(messages, fallbackInstance) {
+  if (!messages || messages.length === 0) return;
+  const token = localStorage.getItem('wp_crm_token');
+  if (!token) return;
+
+  const mediaItems = [];
+  // Percorrer as últimas mensagens (de trás para frente) e identificar mídias
+  const recentMsgs = messages.slice(-50); // Verificar as 50 mais recentes
+  for (const msg of recentMsgs) {
+    const text = msg.text || '';
+    let instance = null;
+    let msgId = null;
+
+    if (text.startsWith('[IMAGE_REF] ')) {
+      const ref = text.replace('[IMAGE_REF] ', '').split('\n')[0];
+      [instance, msgId] = ref.split('|');
+    } else if (text.startsWith('[VIDEO_REF] ')) {
+      const ref = text.replace('[VIDEO_REF] ', '').split('\n')[0];
+      [instance, msgId] = ref.split('|');
+    } else if (text.startsWith('[AUDIO_REF] ')) {
+      const ref = text.replace('[AUDIO_REF] ', '');
+      [instance, msgId] = ref.split('|');
+    } else if (text.startsWith('[DOC_REF] ')) {
+      const ref = text.replace('[DOC_REF] ', '');
+      const parts = ref.split('|');
+      instance = parts[0];
+      msgId = parts[1];
+    } else if (text.startsWith('[IMAGE_SENT] ')) {
+      const ref = text.replace('[IMAGE_SENT] ', '');
+      [instance, msgId] = ref.split('|');
+    } else if (text.startsWith('[VIDEO_SENT] ')) {
+      const ref = text.replace('[VIDEO_SENT] ', '');
+      [instance, msgId] = ref.split('|');
+    }
+
+    if (instance && msgId) {
+      mediaItems.push({ instance, msg_id: msgId });
+    }
+  }
+
+  // Limitar a 15 itens
+  const toFetch = mediaItems.slice(-15);
+  if (toFetch.length === 0) return;
+
+  console.log(`[Prefetch] Pré-baixando ${toFetch.length} mídias para MinIO...`);
+  fetch(`${API_URL}/api/media/prefetch`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ items: toFetch })
+  }).then(r => r.json())
+    .then(data => console.log(`[Prefetch] Enfileirados: ${data.count}`))
+    .catch(e => console.warn('[Prefetch] Erro:', e));
 }
 
 // ─── Messages ─────────────────────────────────────────────────────────────────
@@ -778,7 +882,7 @@ function renderMessages(messages) {
         const [imgInstance, imgMsgId] = ref.split('\n')[0].split('|');
         const caption = ref.split('\n')[1] || '';
         const imgSrc = `${API_URL}/api/media/image?instance=${encodeURIComponent(imgInstance)}&msg_id=${encodeURIComponent(imgMsgId)}&token=${encodeURIComponent(authToken)}`;
-        messageContent = `<img src="${imgSrc}" class="msg-image" alt="Imagem" onclick="openLightbox(this.src)" />`;
+        messageContent = `<img src="${imgSrc}" class="msg-image" alt="Imagem" onclick="openLightbox(this.src)" onerror="this.onerror=null;this.style.display='none';this.insertAdjacentHTML('afterend','<div style=\'padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;color:#aaa;font-size:13px;\'>🖼️ Imagem indisponível</div>')" />`;
         if (caption) {
             messageContent += `<div class="msg-caption">${escapeHtml(caption)}</div>`;
         }
@@ -787,7 +891,7 @@ function renderMessages(messages) {
         const [vidInstance, vidMsgId] = ref.split('\n')[0].split('|');
         const caption = ref.split('\n')[1] || '';
         const vidSrc = `${API_URL}/api/media/video?instance=${encodeURIComponent(vidInstance)}&msg_id=${encodeURIComponent(vidMsgId)}&token=${encodeURIComponent(authToken)}`;
-        messageContent = `<video controls class="msg-video"><source src="${vidSrc}" type="video/mp4">Seu navegador não suporta vídeo.</video>`;
+        messageContent = `<video controls class="msg-video" onerror="this.onerror=null;this.style.display='none';this.insertAdjacentHTML('afterend','<div style=\'padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;color:#aaa;font-size:13px;\'>🎥 Vídeo indisponível</div>')"><source src="${vidSrc}" type="video/mp4">Seu navegador não suporta vídeo.</video>`;
         if (caption) {
             messageContent += `<div class="msg-caption">${escapeHtml(caption)}</div>`;
         }
@@ -826,12 +930,12 @@ function renderMessages(messages) {
         const ref = messageContent.replace('[IMAGE_SENT] ', '');
         const [imgInstance, imgMsgId] = ref.split('|');
         const imgSrc = `${API_URL}/api/media/image?instance=${encodeURIComponent(imgInstance)}&msg_id=${encodeURIComponent(imgMsgId)}&token=${encodeURIComponent(authToken)}`;
-        messageContent = `<img src="${imgSrc}" class="msg-image" alt="Imagem" onclick="openLightbox(this.src)" />`;
+        messageContent = `<img src="${imgSrc}" class="msg-image" alt="Imagem" onclick="openLightbox(this.src)" onerror="this.onerror=null;this.style.display='none';this.insertAdjacentHTML('afterend','<div style=\'padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;color:#aaa;font-size:13px;\'>🖼️ Imagem indisponível</div>')" />`;
     } else if (messageContent.startsWith('[VIDEO_SENT] ')) {
         const ref = messageContent.replace('[VIDEO_SENT] ', '');
         const [vidInstance, vidMsgId] = ref.split('|');
         const vidSrc = `${API_URL}/api/media/video?instance=${encodeURIComponent(vidInstance)}&msg_id=${encodeURIComponent(vidMsgId)}&token=${encodeURIComponent(authToken)}`;
-        messageContent = `<video controls class="msg-video"><source src="${vidSrc}" type="video/mp4">Seu navegador não suporta vídeo.</video>`;
+        messageContent = `<video controls class="msg-video" onerror="this.onerror=null;this.style.display='none';this.insertAdjacentHTML('afterend','<div style=\\'padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;color:#aaa;font-size:13px;\\'>🎥 Vídeo indisponível</div>')"><source src="${vidSrc}" type="video/mp4">Seu navegador não suporta vídeo.</video>`;
     } else if (messageContent.startsWith('[AUDIO_REF] ')) {
         const ref = messageContent.replace('[AUDIO_REF] ', '');
         const [audioInstance, audioMsgId] = ref.split('|');
