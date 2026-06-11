@@ -881,8 +881,8 @@ function renderMessages(messages) {
         const ref = messageContent.replace('[IMAGE_REF] ', '');
         const [imgInstance, imgMsgId] = ref.split('\n')[0].split('|');
         const caption = ref.split('\n')[1] || '';
-        const imgSrc = `${API_URL}/api/media/image?instance=${encodeURIComponent(imgInstance)}&msg_id=${encodeURIComponent(imgMsgId)}&token=${encodeURIComponent(authToken)}`;
-        messageContent = `<img src="${imgSrc}" class="msg-image" alt="Imagem" onclick="openLightbox(this.src)" onerror="this.onerror=null;this.style.display='none';this.insertAdjacentHTML('afterend','<div style=\'padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;color:#aaa;font-size:13px;\'>🖼️ Imagem indisponível</div>')" />`;
+        const imgSrc = msg.minio_url ? msg.minio_url : `${API_URL}/api/media/image?instance=${encodeURIComponent(imgInstance)}&msg_id=${encodeURIComponent(imgMsgId)}&token=${encodeURIComponent(authToken)}`;
+        messageContent = `<img src="${imgSrc}" class="msg-image" alt="Imagem" onclick="openLightbox(this.src)" onerror="this.onerror=null;this.style.display='none';this.insertAdjacentHTML('afterend','<div style=\'padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;color:#aaa;font-size:13px;\'>🖼️ Baixando mídia...</div>')" />`;
         if (caption) {
             messageContent += `<div class="msg-caption">${escapeHtml(caption)}</div>`;
         }
@@ -890,8 +890,8 @@ function renderMessages(messages) {
         const ref = messageContent.replace('[VIDEO_REF] ', '');
         const [vidInstance, vidMsgId] = ref.split('\n')[0].split('|');
         const caption = ref.split('\n')[1] || '';
-        const vidSrc = `${API_URL}/api/media/video?instance=${encodeURIComponent(vidInstance)}&msg_id=${encodeURIComponent(vidMsgId)}&token=${encodeURIComponent(authToken)}`;
-        messageContent = `<video controls class="msg-video" onerror="this.onerror=null;this.style.display='none';this.insertAdjacentHTML('afterend','<div style=\'padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;color:#aaa;font-size:13px;\'>🎥 Vídeo indisponível</div>')"><source src="${vidSrc}" type="video/mp4">Seu navegador não suporta vídeo.</video>`;
+        const vidSrc = msg.minio_url ? msg.minio_url : `${API_URL}/api/media/video?instance=${encodeURIComponent(vidInstance)}&msg_id=${encodeURIComponent(vidMsgId)}&token=${encodeURIComponent(authToken)}`;
+        messageContent = `<video controls class="msg-video" onerror="this.onerror=null;this.style.display='none';this.insertAdjacentHTML('afterend','<div style=\'padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;color:#aaa;font-size:13px;\'>🎥 Baixando mídia...</div>')"><source src="${vidSrc}" type="video/mp4">Seu navegador não suporta vídeo.</video>`;
         if (caption) {
             messageContent += `<div class="msg-caption">${escapeHtml(caption)}</div>`;
         }
@@ -908,7 +908,7 @@ function renderMessages(messages) {
         const docInstance = parts[0];
         const docMsgId = parts[1];
         const docName = parts[2] || 'Arquivo';
-        const docSrc = `${API_URL}/api/media/document?instance=${encodeURIComponent(docInstance)}&msg_id=${encodeURIComponent(docMsgId)}&filename=${encodeURIComponent(docName)}&token=${encodeURIComponent(authToken)}`;
+        const docSrc = msg.minio_url ? msg.minio_url : `${API_URL}/api/media/document?instance=${encodeURIComponent(docInstance)}&msg_id=${encodeURIComponent(docMsgId)}&filename=${encodeURIComponent(docName)}&token=${encodeURIComponent(authToken)}`;
         messageContent = `<a href="${docSrc}" target="_blank" class="msg-doc" style="display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; text-decoration: none; color: inherit;">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
             <span>${escapeHtml(docName)}</span>
@@ -929,17 +929,17 @@ function renderMessages(messages) {
     } else if (messageContent.startsWith('[IMAGE_SENT] ')) {
         const ref = messageContent.replace('[IMAGE_SENT] ', '');
         const [imgInstance, imgMsgId] = ref.split('|');
-        const imgSrc = `${API_URL}/api/media/image?instance=${encodeURIComponent(imgInstance)}&msg_id=${encodeURIComponent(imgMsgId)}&token=${encodeURIComponent(authToken)}`;
-        messageContent = `<img src="${imgSrc}" class="msg-image" alt="Imagem" onclick="openLightbox(this.src)" onerror="this.onerror=null;this.style.display='none';this.insertAdjacentHTML('afterend','<div style=\'padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;color:#aaa;font-size:13px;\'>🖼️ Imagem indisponível</div>')" />`;
+        const imgSrc = msg.minio_url ? msg.minio_url : `${API_URL}/api/media/image?instance=${encodeURIComponent(imgInstance)}&msg_id=${encodeURIComponent(imgMsgId)}&token=${encodeURIComponent(authToken)}`;
+        messageContent = `<img src="${imgSrc}" class="msg-image" alt="Imagem" onclick="openLightbox(this.src)" onerror="this.onerror=null;this.style.display='none';this.insertAdjacentHTML('afterend','<div style=\'padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;color:#aaa;font-size:13px;\'>🖼️ Baixando mídia...</div>')" />`;
     } else if (messageContent.startsWith('[VIDEO_SENT] ')) {
         const ref = messageContent.replace('[VIDEO_SENT] ', '');
         const [vidInstance, vidMsgId] = ref.split('|');
-        const vidSrc = `${API_URL}/api/media/video?instance=${encodeURIComponent(vidInstance)}&msg_id=${encodeURIComponent(vidMsgId)}&token=${encodeURIComponent(authToken)}`;
-        messageContent = `<video controls class="msg-video" onerror="this.onerror=null;this.style.display='none';this.insertAdjacentHTML('afterend','<div style=\\'padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;color:#aaa;font-size:13px;\\'>🎥 Vídeo indisponível</div>')"><source src="${vidSrc}" type="video/mp4">Seu navegador não suporta vídeo.</video>`;
+        const vidSrc = msg.minio_url ? msg.minio_url : `${API_URL}/api/media/video?instance=${encodeURIComponent(vidInstance)}&msg_id=${encodeURIComponent(vidMsgId)}&token=${encodeURIComponent(authToken)}`;
+        messageContent = `<video controls class="msg-video" onerror="this.onerror=null;this.style.display='none';this.insertAdjacentHTML('afterend','<div style=\\'padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;color:#aaa;font-size:13px;\\'>🎥 Baixando mídia...</div>')"><source src="${vidSrc}" type="video/mp4">Seu navegador não suporta vídeo.</video>`;
     } else if (messageContent.startsWith('[AUDIO_REF] ')) {
         const ref = messageContent.replace('[AUDIO_REF] ', '');
         const [audioInstance, audioMsgId] = ref.split('|');
-        const audioSrc = `${API_URL}/api/media/audio?instance=${encodeURIComponent(audioInstance)}&msg_id=${encodeURIComponent(audioMsgId)}&token=${encodeURIComponent(authToken)}`;
+        const audioSrc = msg.minio_url ? msg.minio_url : `${API_URL}/api/media/audio?instance=${encodeURIComponent(audioInstance)}&msg_id=${encodeURIComponent(audioMsgId)}&token=${encodeURIComponent(authToken)}`;
         const avatarLetter = (currentChat?.name || '?')[0].toUpperCase();
         const isOut = msg.type === 'out';
         messageContent = buildWaAudioHTML(audioSrc, avatarLetter, isOut);

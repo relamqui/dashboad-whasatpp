@@ -3367,15 +3367,57 @@ def get_messages(id):
     msgs = Message.query.filter(Message.contact_id == id).order_by(Message.timestamp).all()
     
     msgs_list = []
+    media_msg_ids = []
+    
     for m in msgs:
-        msgs_list.append({
+        text = m.text or ''
+        msg_id = None
+        if text.startswith('[IMAGE_REF] ') or text.startswith('[VIDEO_REF] '):
+            ref = text.split('\n')[0].split(' ')[1]
+            if '|' in ref:
+                msg_id = ref.split('|')[1]
+        elif text.startswith('[AUDIO_REF] ') or text.startswith('[DOC_REF] '):
+            ref = text.split(' ')[1]
+            if '|' in ref:
+                msg_id = ref.split('|')[1]
+        elif text.startswith('[IMAGE_SENT] ') or text.startswith('[VIDEO_SENT] '):
+            ref = text.split(' ')[1]
+            if '|' in ref:
+                msg_id = ref.split('|')[1]
+        
+        m_dict = {
             'id': m.id,
             'text': m.text,
             'type': m.type,
             'time': m.time,
             'timestamp': m.timestamp,
-            'ack': m.ack if m.ack is not None else 2
-        })
+            'ack': m.ack if m.ack is not None else 2,
+            'media_msg_id': msg_id
+        }
+        if msg_id:
+            media_msg_ids.append(msg_id)
+        msgs_list.append(m_dict)
+        
+    if media_msg_ids:
+        # Busca todas as URLs do MinIO de uma vez
+        mfs = MediaFile.query.filter(MediaFile.msg_id.in_(media_msg_ids)).all()
+        url_map = {mf.msg_id: mf.storage_url for mf in mfs if mf.storage_url}
+        
+        # Tentar com short_ids também
+        short_ids = [mid.split('_')[-1] for mid in media_msg_ids if '_' in mid]
+        if short_ids:
+            mfs_short = MediaFile.query.filter(MediaFile.short_id.in_(short_ids)).all()
+            for mf in mfs_short:
+                if mf.storage_url and mf.msg_id not in url_map:
+                    for mid in media_msg_ids:
+                        if mid.endswith(mf.short_id):
+                            url_map[mid] = mf.storage_url
+                            break
+                            
+        for m in msgs_list:
+            if m.get('media_msg_id') and m['media_msg_id'] in url_map:
+                m['minio_url'] = url_map[m['media_msg_id']]
+
     return jsonify(msgs_list)
 
 # ─── Atendimento (Assign / Release) ─────────────────────────────────────────
@@ -4009,106 +4051,8 @@ def stream_media(media_type):
             cd = 'inline' if media_type in ('audio', 'image', 'video', 'document') else 'attachment'
             return Response(file_bytes, mimetype=content_type, headers={'Content-Disposition': cd, 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=3600'})
 
-        short_id = msg_id.split('_')[-1]
-        
-        try:
-            # 1. Tentar primeiro com o ID completo (Motor Baileys)
-            params = {'session': instance, 'messageId': msg_id}
-            waha_url_1 = f"{WAHA_API_URL}/api/files"
-            print(f"[{media_type.capitalize()} Proxy] Buscando {media_type} no WAHA: msg_id={msg_id}")
-            res = requests.get(waha_url_1, headers=get_waha_headers(), params=params, timeout=10)
-            
-            # 2. Se falhar, tenta com o ID curto (NOWEB fallback)
-            if res.status_code == 404 and short_id != msg_id:
-                print(f"[{media_type.capitalize()} Proxy] Arquivo não encontrado pelo ID longo. Tentando curto: {short_id}")
-                params['messageId'] = short_id
-                res = requests.get(waha_url_1, headers=get_waha_headers(), params=params, timeout=10)
-                
-            # 3. Fallback 3 para NOWEB antigo: Arquivo direto
-            if res.status_code == 404:
-                req_filename = request.args.get('filename', '')
-                _, req_ext = os.path.splitext(req_filename)
-                req_ext = req_ext.lstrip('.')
-                
-                if media_type == 'document':
-                    ext = req_ext if req_ext else 'pdf'
-                else:
-                    ext = 'oga' if media_type == 'audio' else ('jpeg' if media_type == 'image' else 'mp4')
-                    
-                print(f"[{media_type.capitalize()} Proxy] Tentando URL direta do NOWEB: {short_id}.{ext}")
-                waha_url_direct = f"{WAHA_API_URL}/api/files/corpal/{short_id}.{ext}"
-                res = requests.get(waha_url_direct, headers=get_waha_headers(), timeout=10)
-                
-        except requests.exceptions.Timeout:
-            print(f"[{media_type.capitalize()} Proxy] TIMEOUT ao buscar {msg_id} no WAHA.")
-            return jsonify({'error': 'Timeout ao buscar arquivo no servidor WAHA. O WhatsApp demorou muito para responder.'}), 504
-        except Exception as e:
-            print(f"[{media_type.capitalize()} Proxy] ERRO de conexão com WAHA: {e}")
-            return jsonify({'error': f'Erro ao conectar ao WAHA: {e}'}), 502
-
-        print(f"[{media_type.capitalize()} Proxy] status={res.status_code} resp_len={len(res.content)}")
-        
-        if res.status_code in (200, 201):
-            file_bytes = res.content
-            ctype_waha = res.headers.get('Content-Type', '')
-            
-            # Se o WAHA retornou JSON
-            if 'application/json' in ctype_waha:
-                try:
-                    import base64
-                    json_data = res.json()
-                    
-                    if 'mimetype' in json_data:
-                        content_type = json_data['mimetype']
-                        
-                    if 'data' in json_data:
-                        import re
-                        raw = json_data['data']
-                        raw = re.sub(r'[^A-Za-z0-9+/]', '', raw)
-                        raw += "=" * ((4 - len(raw) % 4) % 4)
-                        file_bytes = base64.b64decode(raw)
-                    elif 'url' in json_data:
-                        # Arquivo físico hospedado no próprio WAHA
-                        waha_file_url = json_data['url']
-                        # Garantir que aponte pro host correto caso WAHA retorne localhost
-                        if waha_file_url.startswith('http://localhost') or waha_file_url.startswith('http://127.0.0.1'):
-                            from urllib.parse import urlparse
-                            parsed = urlparse(waha_file_url)
-                            waha_file_url = f"{WAHA_API_URL}{parsed.path}"
-                            
-                        # Buscar o arquivo binário real
-                        file_res = requests.get(waha_file_url, headers=get_waha_headers(), timeout=15)
-                        if file_res.status_code == 200:
-                            file_bytes = file_res.content
-                            ctype_waha = file_res.headers.get('Content-Type', '')
-                            if ctype_waha and ctype_waha != 'application/octet-stream':
-                                content_type = ctype_waha
-                except Exception as e:
-                    print("Erro ao processar JSON do WAHA:", e)
-            else:
-                if ctype_waha and ctype_waha != 'application/octet-stream':
-                    content_type = ctype_waha
-                    
-            # Salvar no MinIO + cache local e registrar no banco
-            saved_filename = None
-            saved_minio_url = None
-            try:
-                saved_filename, saved_minio_url = save_media_file(msg_id, file_bytes, media_type, instance=instance, mimetype=content_type)
-            except Exception as e_save:
-                print(f"[{media_type.capitalize()} Proxy] AVISO: Falha ao salvar mídia: {e_save}")
-            
-            # Se salvou no MinIO, redirecionar para URL pública (mais rápido, usa CDN/cache)
-            if saved_minio_url:
-                from flask import redirect
-                print(f"[{media_type.capitalize()} Proxy] Mídia baixada do WAHA → salva no MinIO → Redirecionando: {saved_minio_url}")
-                return redirect(saved_minio_url)
-            
-            # Fallback: servir bytes diretamente se MinIO falhou
-            print(f"[{media_type.capitalize()} Proxy] MinIO indisponível, servindo bytes diretamente ({len(file_bytes)} bytes)")
-            return Response(file_bytes, mimetype=content_type,
-                headers={'Content-Disposition': 'inline', 'Accept-Ranges': 'bytes',
-                         'Cache-Control': 'public, max-age=3600'})
-        return jsonify({'error': f'Nao foi possivel buscar {media_type}', 'waha_status': res.status_code}), 502
+        print(f"[{media_type.capitalize()} Proxy] Arquivo NÃO encontrado no MinIO nem no disco: {msg_id}")
+        return jsonify({'error': 'Arquivo não encontrado. Mídia não está no MinIO.'}), 404
     except Exception as e:
         print(f"Erro stream_{media_type}: {e}")
         return jsonify({'error': str(e)}), 500
