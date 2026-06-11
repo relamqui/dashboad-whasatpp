@@ -303,16 +303,42 @@ def get_media_base64(instance, msg_data):
                     return base64.b64encode(f.read()).decode('utf-8')
         
         # 3. Buscar do WAHA e salvar (MinIO + local)
-        url = f"{WAHA_API_URL}/api/files?session=corpal&messageId={msg_id}"
-        res = requests.get(url, headers=get_waha_headers(), timeout=15)
+        session_name = instance if instance else 'corpal'
+        url = f"{WAHA_API_URL}/api/files"
+        res = requests.get(url, headers=get_waha_headers(), params={'session': session_name, 'messageId': msg_id}, timeout=15)
+        if res.status_code == 404 and short_id != msg_id:
+            res = requests.get(url, headers=get_waha_headers(), params={'session': session_name, 'messageId': short_id}, timeout=15)
+            
         if res.status_code == 200:
             file_bytes = res.content
             ctype = res.headers.get('Content-Type', '')
-            m_type = 'audio'
+            
+            if 'application/json' in ctype:
+                import re
+                json_data = res.json()
+                real_mimetype = json_data.get('mimetype', ctype)
+                if 'data' in json_data:
+                    raw = json_data['data']
+                    raw = re.sub(r'[^A-Za-z0-9+/]', '', raw)
+                    raw += "=" * ((4 - len(raw) % 4) % 4)
+                    file_bytes = base64.b64decode(raw)
+                    ctype = real_mimetype
+                elif 'url' in json_data:
+                    real_url = json_data['url']
+                    if real_url.startswith('http://localhost') or real_url.startswith('http://127.0.0.1'):
+                        from urllib.parse import urlparse
+                        real_url = f"{WAHA_API_URL}{urlparse(real_url).path}"
+                    real_res = requests.get(real_url, headers=get_waha_headers(), timeout=15)
+                    if real_res.status_code == 200:
+                        file_bytes = real_res.content
+                        ctype = real_res.headers.get('Content-Type', '') or real_mimetype
+            
+            m_type = 'document'
             if ctype.startswith('image/'): m_type = 'image'
+            elif ctype.startswith('audio/'): m_type = 'audio'
             elif ctype.startswith('video/'): m_type = 'video'
-            elif ctype.startswith('application/'): m_type = 'document'
-            save_media_file(msg_id, file_bytes, m_type, instance=instance, mimetype=ctype)
+            
+            save_media_file(msg_id, file_bytes, m_type, instance=session_name, mimetype=ctype)
             return base64.b64encode(file_bytes).decode('utf-8')
     except Exception as e:
         print(f"Erro ao baixar midia base64 (WAHA): {e}")
@@ -2474,6 +2500,7 @@ def webhook():
                     waha_to = remote_jid_alt
                     
             fromMe = payload.get('fromMe', False)
+            raw_jid = waha_to if fromMe else waha_from
             body = payload.get('body', '')
             msg_type = payload.get('type', 'chat')
             
@@ -4023,7 +4050,7 @@ def stream_media(media_type):
                 break
             
         if cache_path:
-            print(f"[{media_type.capitalize()} Proxy] Servindo do cache local: {cache_path}")
+            print(f"[{media_type.capitalize()} Proxy] Cache local encontrado: {cache_path}")
             if media_type == 'audio':
                 try:
                     with open(cache_path, 'rb') as f: header = f.read(4)
@@ -4038,6 +4065,18 @@ def stream_media(media_type):
                 else: content_type = 'application/octet-stream'
             
             with open(cache_path, 'rb') as f: file_bytes = f.read()
+            
+            # Fazer upload para o MinIO de forma síncrona para que a resposta já seja o redirecionamento
+            try:
+                print(f"[{media_type.capitalize()} Proxy] Enviando arquivo de cache local para o MinIO: {cache_path}")
+                _, minio_url = save_media_file(msg_id, file_bytes, media_type, instance=instance, mimetype=content_type)
+                if minio_url:
+                    from flask import redirect
+                    print(f"[{media_type.capitalize()} Proxy] Upload OK! Redirecionando para MinIO: {minio_url}")
+                    return redirect(minio_url)
+            except Exception as e_cache_upload:
+                print(f"[{media_type.capitalize()} Proxy] Erro ao enviar cache local para o MinIO: {e_cache_upload}")
+
             cd = 'inline' if media_type in ('audio', 'image', 'video', 'document') else 'attachment'
             return Response(file_bytes, mimetype=content_type, headers={'Content-Disposition': cd, 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=3600'})
 
