@@ -639,7 +639,7 @@ function renderChatList(contacts) {
         const filialTag = c.tags.find(t => typeof t === 'string' && t.includes(':') && !t.toLowerCase().startsWith('atendente:'));
         
         if (atendenteTag) {
-            visibleTags.push({ label: atendenteTag.replace('Atendente:', '').trim(), cls: 'tag-orange' });
+            visibleTags.push({ label: atendenteTag, cls: 'tag-orange' });
         } else if (botTag) {
             visibleTags.push({ label: 'BOT', cls: 'tag-purple' });
         }
