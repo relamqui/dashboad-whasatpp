@@ -3399,24 +3399,27 @@ def get_messages(id):
         msgs_list.append(m_dict)
         
     if media_msg_ids:
-        # Busca todas as URLs do MinIO de uma vez
-        mfs = MediaFile.query.filter(MediaFile.msg_id.in_(media_msg_ids)).all()
-        url_map = {mf.msg_id: mf.storage_url for mf in mfs if mf.storage_url}
-        
-        # Tentar com short_ids também
-        short_ids = [mid.split('_')[-1] for mid in media_msg_ids if '_' in mid]
-        if short_ids:
-            mfs_short = MediaFile.query.filter(MediaFile.short_id.in_(short_ids)).all()
-            for mf in mfs_short:
-                if mf.storage_url and mf.msg_id not in url_map:
-                    for mid in media_msg_ids:
-                        if mid.endswith(mf.short_id):
-                            url_map[mid] = mf.storage_url
-                            break
-                            
-        for m in msgs_list:
-            if m.get('media_msg_id') and m['media_msg_id'] in url_map:
-                m['minio_url'] = url_map[m['media_msg_id']]
+        try:
+            # Busca todas as URLs do MinIO de uma vez
+            mfs = MediaFile.query.filter(MediaFile.msg_id.in_(media_msg_ids)).all()
+            url_map = {mf.msg_id: mf.storage_url for mf in mfs if mf.storage_url}
+            
+            # Tentar com short_ids também
+            short_ids = [mid.split('_')[-1] for mid in media_msg_ids if '_' in mid]
+            if short_ids:
+                mfs_short = MediaFile.query.filter(MediaFile.short_id.in_(short_ids)).all()
+                for mf in mfs_short:
+                    if mf.storage_url and mf.msg_id not in url_map:
+                        for mid in media_msg_ids:
+                            if mid.endswith(mf.short_id):
+                                url_map[mid] = mf.storage_url
+                                break
+                                
+            for m in msgs_list:
+                if m.get('media_msg_id') and m['media_msg_id'] in url_map:
+                    m['minio_url'] = url_map[m['media_msg_id']]
+        except Exception as e:
+            print(f"Erro ao buscar MediaFile em get_messages: {e}")
 
     return jsonify(msgs_list)
 
@@ -4011,13 +4014,10 @@ def stream_media(media_type):
             
         # 2. Busca com glob (fallback se não estiver no banco, mas existir no disco legado)
         if not cache_path:
-            # Usar glob.escape para lidar com caracteres especiais como @
             matches = glob.glob(glob.escape(local_path) + '.*')
             if os.path.exists(local_path): matches.insert(0, local_path)
-            
             matches_short = glob.glob(glob.escape(local_path_short) + '.*')
             if os.path.exists(local_path_short): matches_short.insert(0, local_path_short)
-            
             for p in matches + matches_short:
                 cache_path = p
                 break
@@ -4026,33 +4026,66 @@ def stream_media(media_type):
             print(f"[{media_type.capitalize()} Proxy] Servindo do cache local: {cache_path}")
             if media_type == 'audio':
                 try:
-                    with open(cache_path, 'rb') as f:
-                        header = f.read(4)
-                    if header.startswith(b'OggS'):
-                        content_type = 'audio/ogg'
-                    elif header.startswith(b'\x1aE\xdf\xa3'):
-                        content_type = 'audio/webm'
-                    else:
-                        content_type = 'audio/webm'
-                except:
-                    content_type = 'audio/webm'
+                    with open(cache_path, 'rb') as f: header = f.read(4)
+                    if header.startswith(b'OggS'): content_type = 'audio/ogg'
+                    elif header.startswith(b'\x1aE\xdf\xa3'): content_type = 'audio/webm'
+                    else: content_type = 'audio/webm'
+                except: content_type = 'audio/webm'
             elif media_type == 'document':
                 import mimetypes
                 guess, _ = mimetypes.guess_type(cache_path)
-                if guess:
-                    content_type = guess
-                else:
-                    content_type = 'application/octet-stream'
+                if guess: content_type = guess
+                else: content_type = 'application/octet-stream'
             
-            with open(cache_path, 'rb') as f:
-                file_bytes = f.read()
-                
-            # Content-Disposition inline with fallback to attachment for unknown docs
+            with open(cache_path, 'rb') as f: file_bytes = f.read()
             cd = 'inline' if media_type in ('audio', 'image', 'video', 'document') else 'attachment'
             return Response(file_bytes, mimetype=content_type, headers={'Content-Disposition': cd, 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=3600'})
 
-        print(f"[{media_type.capitalize()} Proxy] Arquivo NÃO encontrado no MinIO nem no disco: {msg_id}")
-        return jsonify({'error': 'Arquivo não encontrado. Mídia não está no MinIO.'}), 404
+        # 3. Fallback final para WAHA: Baixa, serve como byte stream e salva no MinIO em background (NUNCA expõe a URL)
+        print(f"[{media_type.capitalize()} Proxy] Arquivo não encontrado no MinIO/Disco. Buscando do WAHA em tempo real: {msg_id}")
+        waha_url_1 = f"{WAHA_API_URL}/api/files"
+        import requests
+        res = requests.get(waha_url_1, headers=get_waha_headers(), params={'session': instance, 'messageId': msg_id}, timeout=15)
+        if res.status_code == 404 and short_id != msg_id:
+            res = requests.get(waha_url_1, headers=get_waha_headers(), params={'session': instance, 'messageId': short_id}, timeout=15)
+        
+        if res.status_code == 200:
+            ctype = res.headers.get('Content-Type', '')
+            file_bytes = None
+            if 'application/json' in ctype:
+                import base64, re
+                json_data = res.json()
+                if 'data' in json_data:
+                    raw = json_data['data']
+                    raw = re.sub(r'[^A-Za-z0-9+/]', '', raw)
+                    raw += "=" * ((4 - len(raw) % 4) % 4)
+                    file_bytes = base64.b64decode(raw)
+                elif 'url' in json_data:
+                    real_url = json_data['url']
+                    if real_url.startswith('http://localhost') or real_url.startswith('http://127.0.0.1'):
+                        from urllib.parse import urlparse
+                        real_url = f"{WAHA_API_URL}{urlparse(real_url).path}"
+                    
+                    real_res = requests.get(real_url, headers=get_waha_headers(), timeout=15)
+                    if real_res.status_code == 200:
+                        file_bytes = real_res.content
+                        ctype = real_res.headers.get('Content-Type', '') or content_type
+            else:
+                file_bytes = res.content
+                
+            if file_bytes:
+                # Salvar no banco/MinIO de forma assíncrona para não bloquear a resposta!
+                import threading
+                def _bg_save(w_id, w_bytes, w_type, w_inst, w_ctype):
+                    with app.app_context():
+                        save_media_file(w_id, w_bytes, w_type, instance=w_inst, mimetype=w_ctype)
+                threading.Thread(target=_bg_save, args=(msg_id, file_bytes, media_type, instance, ctype)).start()
+
+                cd = 'inline' if media_type in ('audio', 'image', 'video', 'document') else 'attachment'
+                return Response(file_bytes, mimetype=ctype, headers={'Content-Disposition': cd, 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=3600'})
+
+        print(f"[{media_type.capitalize()} Proxy] FALHA DEFINITIVA. Não está no MinIO, Disco ou WAHA: {msg_id}")
+        return jsonify({'error': 'Arquivo não encontrado na api ou disco.'}), 404
     except Exception as e:
         print(f"Erro stream_{media_type}: {e}")
         return jsonify({'error': str(e)}), 500
