@@ -532,9 +532,9 @@ def migrate_to_sql():
     with app.app_context():
         db_sql.create_all()
         
-        # Add finalizado column to tempo_espera
+        # Add finalizado column to tempo_espera (TIMESTAMP funciona no SQLite e PostgreSQL)
         try:
-            db_sql.session.execute(db_sql.text('ALTER TABLE tempo_espera ADD COLUMN finalizado DATETIME'))
+            db_sql.session.execute(db_sql.text('ALTER TABLE tempo_espera ADD COLUMN finalizado TIMESTAMP'))
             db_sql.session.commit()
         except Exception:
             db_sql.session.rollback()
