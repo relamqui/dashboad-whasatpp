@@ -891,13 +891,6 @@ def add_bot_tag():
     if added:
         contact.tags = current_tags
         flag_modified(contact, 'tags')
-        
-        # Monitoramento de tempo de espera
-        espera_aberta = TempoEspera.query.filter_by(numero_cliente=phone, atendido=None).first()
-        if not espera_aberta:
-            nova_espera = TempoEspera(numero_cliente=phone, inicio=get_now_sp())
-            db_sql.session.add(nova_espera)
-            
         db_sql.session.commit()
         print(f"[BOT/TAGS] Tags atualizadas para '{contact.id}': {contact.tags}")
         _inst_room = contact.instance or 'unknown'
@@ -911,6 +904,18 @@ def add_bot_tag():
         }, room='admin')
     else:
         print(f"[BOT/TAGS] Nenhuma tag alterada (filial={filial}, setor={setor}, tag={custom_tag})")
+
+    # Monitoramento de tempo de espera — sempre verifica, independente de tags terem mudado
+    try:
+        espera_aberta = TempoEspera.query.filter_by(numero_cliente=phone, atendido=None).first()
+        if not espera_aberta:
+            nova_espera = TempoEspera(numero_cliente=phone, inicio=get_now_sp())
+            db_sql.session.add(nova_espera)
+            db_sql.session.commit()
+            print(f"[TEMPO_ESPERA] Inicio registrado para {phone}")
+    except Exception as e_te:
+        db_sql.session.rollback()
+        print(f"[TEMPO_ESPERA] Erro ao registrar inicio: {e_te}")
         
     return jsonify({'success': True, 'contact_id': contact.id, 'tags': contact.tags}), 200
 
@@ -3511,21 +3516,27 @@ def assign_chat(id):
     flag_modified(contact, 'tags')
     
     # Atualiza o monitoramento de tempo de espera
-    espera_aberta = TempoEspera.query.filter_by(numero_cliente=contact.phone, atendido=None).order_by(TempoEspera.id.desc()).first()
-    if espera_aberta:
-        espera_aberta.nome_atendente = user.name
-        
-        _f = Filial.query.get(user.filial_id) if user.filial_id else None
-        _s = Setor.query.get(user.setor_id) if user.setor_id else None
-        _f_name = _f.name if _f else ""
-        _s_name = _s.name if _s else ""
-        
-        if _s_name and _f_name:
-            espera_aberta.setor_filial = f"{_s_name}:{_f_name}"
-        elif _s_name or _f_name:
-            espera_aberta.setor_filial = _s_name or _f_name
+    try:
+        espera_aberta = TempoEspera.query.filter_by(numero_cliente=contact.phone, atendido=None).order_by(TempoEspera.id.desc()).first()
+        if espera_aberta:
+            espera_aberta.nome_atendente = user.name
             
-        espera_aberta.atendido = get_now_sp()
+            _f = Filial.query.get(user.filial_id) if user.filial_id else None
+            _s = Setor.query.get(user.setor_id) if user.setor_id else None
+            _f_name = _f.name if _f else ""
+            _s_name = _s.name if _s else ""
+            
+            if _s_name and _f_name:
+                espera_aberta.setor_filial = f"{_s_name}:{_f_name}"
+            elif _s_name or _f_name:
+                espera_aberta.setor_filial = _s_name or _f_name
+                
+            espera_aberta.atendido = get_now_sp()
+            db_sql.session.commit()
+            print(f"[TEMPO_ESPERA] Atendido registrado para {contact.phone}")
+    except Exception as e_te:
+        db_sql.session.rollback()
+        print(f"[TEMPO_ESPERA] Erro ao registrar atendido: {e_te}")
     
     db_sql.session.commit()
     
@@ -3662,10 +3673,15 @@ def release_chat(id):
     db_sql.session.commit()
     
     # Atualiza o monitoramento de tempo de espera com o timestamp de finalizacao
-    espera_ativa = TempoEspera.query.filter_by(numero_cliente=contact.phone, finalizado=None).order_by(TempoEspera.id.desc()).first()
-    if espera_ativa:
-        espera_ativa.finalizado = get_now_sp()
-        db_sql.session.commit()
+    try:
+        espera_ativa = TempoEspera.query.filter_by(numero_cliente=contact.phone, finalizado=None).order_by(TempoEspera.id.desc()).first()
+        if espera_ativa:
+            espera_ativa.finalizado = get_now_sp()
+            db_sql.session.commit()
+            print(f"[TEMPO_ESPERA] Finalizado registrado para {contact.phone}")
+    except Exception as e_te:
+        db_sql.session.rollback()
+        print(f"[TEMPO_ESPERA] Erro ao registrar finalizado: {e_te}")
     
     # Registra no SLA que o atendimento foi finalizado
     track_sla_event(contact.phone, event_type='RELEASED')
