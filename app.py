@@ -248,6 +248,7 @@ class TempoEspera(db_sql.Model):
     setor_filial = db_sql.Column(db_sql.String(150), nullable=True)
     inicio = db_sql.Column(db_sql.DateTime, nullable=False, default=get_now)
     atendido = db_sql.Column(db_sql.DateTime, nullable=True)
+    finalizado = db_sql.Column(db_sql.DateTime, nullable=True)
 
 class MediaFile(db_sql.Model):
     __tablename__ = 'media_file'
@@ -3647,6 +3648,12 @@ def release_chat(id):
     flag_modified(contact, 'tags')
     
     db_sql.session.commit()
+    
+    # Atualiza o monitoramento de tempo de espera com o timestamp de finalizacao
+    espera_ativa = TempoEspera.query.filter_by(numero_cliente=contact.phone, finalizado=None).order_by(TempoEspera.id.desc()).first()
+    if espera_ativa:
+        espera_ativa.finalizado = get_now()
+        db_sql.session.commit()
     
     # Registra no SLA que o atendimento foi finalizado
     track_sla_event(contact.phone, event_type='RELEASED')
