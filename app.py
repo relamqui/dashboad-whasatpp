@@ -240,6 +240,15 @@ class SlaHistory(db_sql.Model):
     finalizado_em = db_sql.Column(db_sql.Text, nullable=True)
     criado_em = db_sql.Column(db_sql.Text, nullable=False)
 
+class TempoEspera(db_sql.Model):
+    __tablename__ = 'tempo_espera'
+    id = db_sql.Column(db_sql.Integer, primary_key=True, autoincrement=True)
+    numero_cliente = db_sql.Column(db_sql.String(50), nullable=False)
+    nome_atendente = db_sql.Column(db_sql.String(100), nullable=True)
+    setor_filial = db_sql.Column(db_sql.String(150), nullable=True)
+    inicio = db_sql.Column(db_sql.DateTime, nullable=False, default=get_now)
+    atendido = db_sql.Column(db_sql.DateTime, nullable=True)
+
 class MediaFile(db_sql.Model):
     __tablename__ = 'media_file'
     id = db_sql.Column(db_sql.Integer, primary_key=True, autoincrement=True)
@@ -869,6 +878,13 @@ def add_bot_tag():
     if added:
         contact.tags = current_tags
         flag_modified(contact, 'tags')
+        
+        # Monitoramento de tempo de espera
+        espera_aberta = TempoEspera.query.filter_by(numero_cliente=phone, atendido=None).first()
+        if not espera_aberta:
+            nova_espera = TempoEspera(numero_cliente=phone, inicio=get_now())
+            db_sql.session.add(nova_espera)
+            
         db_sql.session.commit()
         print(f"[BOT/TAGS] Tags atualizadas para '{contact.id}': {contact.tags}")
         _inst_room = contact.instance or 'unknown'
@@ -2271,7 +2287,7 @@ def bot_message_webhook():
                 time=time_str,
                 timestamp=int(now.timestamp()),
                 instance=inst,
-                sender_id=request.user['id']
+                sender_id=None
             )
             db_sql.session.add(new_msg)
         
@@ -3480,6 +3496,23 @@ def assign_chat(id):
         new_tags.append(atendente_tag)
     contact.tags = new_tags
     flag_modified(contact, 'tags')
+    
+    # Atualiza o monitoramento de tempo de espera
+    espera_aberta = TempoEspera.query.filter_by(numero_cliente=contact.phone, atendido=None).order_by(TempoEspera.id.desc()).first()
+    if espera_aberta:
+        espera_aberta.nome_atendente = user.name
+        
+        _f = Filial.query.get(user.filial_id) if user.filial_id else None
+        _s = Setor.query.get(user.setor_id) if user.setor_id else None
+        _f_name = _f.name if _f else ""
+        _s_name = _s.name if _s else ""
+        
+        if _s_name and _f_name:
+            espera_aberta.setor_filial = f"{_s_name}:{_f_name}"
+        elif _s_name or _f_name:
+            espera_aberta.setor_filial = _s_name or _f_name
+            
+        espera_aberta.atendido = get_now()
     
     db_sql.session.commit()
     
