@@ -9,6 +9,11 @@ from urllib.parse import urlparse
 def get_now():
     return datetime.datetime.now(pytz.timezone('America/Sao_Paulo'))
 
+def get_now_sp():
+    """Retorna datetime naive no horário de São Paulo (sem info de timezone).
+    Usado para salvar no banco (PostgreSQL/SQLite) mostrando o horário de SP."""
+    return datetime.datetime.now(pytz.timezone('America/Sao_Paulo')).replace(tzinfo=None)
+
 from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit, join_room
@@ -246,7 +251,7 @@ class TempoEspera(db_sql.Model):
     numero_cliente = db_sql.Column(db_sql.String(50), nullable=False)
     nome_atendente = db_sql.Column(db_sql.String(100), nullable=True)
     setor_filial = db_sql.Column(db_sql.String(150), nullable=True)
-    inicio = db_sql.Column(db_sql.DateTime, nullable=False, default=get_now)
+    inicio = db_sql.Column(db_sql.DateTime, nullable=False, default=get_now_sp)
     atendido = db_sql.Column(db_sql.DateTime, nullable=True)
     finalizado = db_sql.Column(db_sql.DateTime, nullable=True)
 
@@ -890,7 +895,7 @@ def add_bot_tag():
         # Monitoramento de tempo de espera
         espera_aberta = TempoEspera.query.filter_by(numero_cliente=phone, atendido=None).first()
         if not espera_aberta:
-            nova_espera = TempoEspera(numero_cliente=phone, inicio=get_now())
+            nova_espera = TempoEspera(numero_cliente=phone, inicio=get_now_sp())
             db_sql.session.add(nova_espera)
             
         db_sql.session.commit()
@@ -3520,7 +3525,7 @@ def assign_chat(id):
         elif _s_name or _f_name:
             espera_aberta.setor_filial = _s_name or _f_name
             
-        espera_aberta.atendido = get_now()
+        espera_aberta.atendido = get_now_sp()
     
     db_sql.session.commit()
     
@@ -3659,7 +3664,7 @@ def release_chat(id):
     # Atualiza o monitoramento de tempo de espera com o timestamp de finalizacao
     espera_ativa = TempoEspera.query.filter_by(numero_cliente=contact.phone, finalizado=None).order_by(TempoEspera.id.desc()).first()
     if espera_ativa:
-        espera_ativa.finalizado = get_now()
+        espera_ativa.finalizado = get_now_sp()
         db_sql.session.commit()
     
     # Registra no SLA que o atendimento foi finalizado
