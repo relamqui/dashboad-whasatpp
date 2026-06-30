@@ -522,8 +522,9 @@
       return 'ruim';
     }
     function mediaClass(nota) {
-      if (nota >= 8.5) return 'alta';
-      if (nota >= 6)   return 'media';
+      // Escala 0-5: 4.5-5 = excelente, 3-4.4 = media, abaixo = ruim
+      if (nota >= 4.5) return 'alta';
+      if (nota >= 3)   return 'media';
       return 'baixa';
     }
     function barPct(val, total) {
