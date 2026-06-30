@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WP CRM — Painel Tempo de Espera</title>
+  <meta name="description" content="Ranking de eficiência de atendimento por tempo de espera e chat." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/dashboard.css" />
+  <style>
+    :root {
+      --te-blue:   #3498db;
+      --te-cyan:   #00c8e0;
+      --te-green:  #00c896;
+      --te-yellow: #f5a623;
+      --te-red:    #e74c3c;
+    }
+
+    body {
+      height: auto; overflow: auto;
+      background-color: var(--bg-app);
+      color: var(--text-primary);
+      font-family: 'Inter', sans-serif;
+    }
+
+    .page-container { max-width: 1400px; margin: 0 auto; padding: 32px 40px; }
+
+    /* ─── Header ─── */
+    .back-btn {
+      display: flex; align-items: center; gap: 8px;
+      color: var(--text-secondary); background: none; border: none;
+      font-size: 14px; cursor: pointer; margin-bottom: 12px;
+      font-family: 'Inter', sans-serif; transition: color .2s;
+    }
+    .back-btn:hover { color: var(--text-primary); }
+    .page-title h1 {
+      font-size: 24px; font-weight: 700; margin: 0;
+      background: linear-gradient(135deg, #00c8e0, #3498db);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .page-title span { font-size: 13px; color: var(--text-secondary); }
+
+    /* ─── Filtros ─── */
+    .filters-bar {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 20px 24px;
+      display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap;
+      margin: 24px 0 28px;
+    }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group label {
+      font-size: 12px; font-weight: 600; color: var(--text-secondary);
+      text-transform: uppercase; letter-spacing: .05em;
+    }
+    .form-group input {
+      padding: 10px 14px; border-radius: 8px;
+      background: var(--bg-input); border: 1px solid var(--border);
+      color: white; outline: none; font-size: 14px; font-family: 'Inter', sans-serif;
+      min-width: 150px;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #00c8e0, #0098b0);
+      color: white; border: none; padding: 10px 24px; border-radius: 8px;
+      cursor: pointer; font-weight: 600; font-size: 14px; font-family: 'Inter', sans-serif;
+      transition: opacity .2s, transform .1s;
+    }
+    .btn-primary:hover { opacity: .9; transform: translateY(-1px); }
+
+    /* ─── Tabs ─── */
+    .tabs {
+      display: flex; gap: 4px; background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 4px; margin-bottom: 28px; width: fit-content;
+    }
+    .tab-btn {
+      padding: 9px 22px; border-radius: 9px; border: none; background: transparent;
+      color: var(--text-secondary); font-size: 14px; font-weight: 500;
+      cursor: pointer; font-family: 'Inter', sans-serif; transition: all .2s;
+    }
+    .tab-btn.active { background: linear-gradient(135deg, #00c8e0, #0098b0); color: white; font-weight: 600; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ─── Filial Accordion ─── */
+    .filial-block {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 14px; margin-bottom: 20px; overflow: hidden; transition: box-shadow .2s;
+    }
+    .filial-block:hover { box-shadow: 0 4px 24px rgba(0,200,224,.08); }
+    .filial-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 24px; cursor: pointer; user-select: none; transition: background .2s;
+    }
+    .filial-header:hover { background: rgba(255,255,255,.03); }
+    .filial-header-left { display: flex; align-items: center; gap: 16px; }
+    .filial-icon {
+      width: 44px; height: 44px; border-radius: 12px;
+      background: linear-gradient(135deg, rgba(0,200,224,.2), rgba(52,152,219,.2));
+      display: flex; align-items: center; justify-content: center; font-size: 20px;
+    }
+    .filial-name { font-size: 17px; font-weight: 700; }
+    .filial-meta { font-size: 12px; color: var(--text-secondary); margin-top: 3px; }
+    .filial-header-right { display: flex; align-items: center; gap: 20px; }
+    .chevron { transition: transform .3s; color: var(--text-secondary); }
+    .filial-block.open .chevron { transform: rotate(180deg); }
+    .filial-body { display: none; padding: 0 16px 16px; }
+    .filial-block.open .filial-body { display: block; }
+
+    /* ─── Setor Cards ─── */
+    .setores-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px;
+    }
+    .setor-card {
+      background: rgba(255,255,255,.03); border: 1px solid var(--border);
+      border-radius: 12px; padding: 18px; transition: transform .2s, border-color .2s;
+    }
+    .setor-card:hover { transform: translateY(-2px); border-color: rgba(0,200,224,.3); }
+    .setor-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+    .setor-name { font-size: 14px; font-weight: 600; }
+    .setor-votos { font-size: 11px; color: var(--text-secondary); margin-top: 3px; }
+
+    /* ─── Tempo Badges ─── */
+    .tempo-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 13px;
+    }
+    .tempo-row:last-child { border-bottom: none; }
+    .tempo-label { color: var(--text-secondary); }
+    .tempo-value { font-weight: 600; font-family: monospace; font-size: 13px; }
+    .tempo-value.fast   { color: var(--te-green); }
+    .tempo-value.medium { color: var(--te-yellow); }
+    .tempo-value.slow   { color: var(--te-red); }
+
+    /* ─── Score Badge ─── */
+    .score-badge {
+      display: inline-flex; flex-direction: column; align-items: center;
+      justify-content: center; min-width: 58px; height: 58px;
+      border-radius: 12px; font-weight: 800; border: 2px solid;
+      padding: 0 8px;
+    }
+    .score-badge .score-val { font-size: 15px; line-height: 1; }
+    .score-badge .score-lbl { font-size: 9px; opacity: .7; margin-top: 2px; text-transform: uppercase; }
+    .score-badge.top    { color: var(--te-green);  border-color: var(--te-green);  background: rgba(0,200,150,.1); }
+    .score-badge.mid    { color: var(--te-blue);   border-color: var(--te-blue);   background: rgba(52,152,219,.1); }
+    .score-badge.low    { color: var(--te-yellow); border-color: var(--te-yellow); background: rgba(245,166,35,.1); }
+    .score-badge.bot    { color: var(--te-red);    border-color: var(--te-red);    background: rgba(231,76,60,.1); }
+
+    /* ─── Ranking Table ─── */
+    .ranking-table-wrap {
+      overflow-x: auto; border-radius: 14px;
+      border: 1px solid var(--border); background: var(--bg-card);
+    }
+    table.ranking-table { width: 100%; border-collapse: collapse; }
+    table.ranking-table th {
+      padding: 14px 18px; text-align: left; font-size: 11px; font-weight: 700;
+      color: var(--text-secondary); text-transform: uppercase; letter-spacing: .07em;
+      background: rgba(0,0,0,.2); border-bottom: 1px solid var(--border);
+    }
+    table.ranking-table td {
+      padding: 14px 18px; font-size: 14px; color: var(--text-primary);
+      border-bottom: 1px solid rgba(255,255,255,.04);
+    }
+    table.ranking-table tr:last-child td { border-bottom: none; }
+    table.ranking-table tr:hover td { background: rgba(255,255,255,.02); }
+
+    .rank-pos { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--text-secondary); }
+    .medal { font-size: 20px; }
+    .atendente-info { display: flex; flex-direction: column; }
+    .atendente-name { font-weight: 600; font-size: 14px; }
+    .atendente-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+    /* ─── Helpers ─── */
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
+    .empty-icon { font-size: 40px; margin-bottom: 12px; }
+    .spinner { display: flex; justify-content: center; align-items: center; padding: 60px; }
+    .spinner::after {
+      content: ''; width: 36px; height: 36px;
+      border: 3px solid rgba(255,255,255,.1); border-top-color: var(--te-cyan);
+      border-radius: 50%; animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div class="page-container">
+
+  <!-- Header -->
+  <button class="back-btn" onclick="location.href='dashboard.html'">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+    </svg>
+    Voltar ao Dashboard
+  </button>
+  <div class="page-title">
+    <h1>⏱️ Painel Tempo de Espera</h1>
+    <span>Ranking de eficiência: menos espera + mais atendimentos = melhor posição</span>
+  </div>
+
+  <!-- Filtros -->
+  <div class="filters-bar">
+    <div class="form-group">
+      <label>Data Início</label>
+      <input type="date" id="filterStart" />
+    </div>
+    <div class="form-group">
+      <label>Data Fim</label>
+      <input type="date" id="filterEnd" />
+    </div>
+    <button class="btn-primary" onclick="loadAll()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle;margin-right:6px">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      Filtrar
+    </button>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" id="tab-filiais" onclick="switchTab('filiais')">🏢 Por Filial / Setor</button>
+    <button class="tab-btn" id="tab-atendentes" onclick="switchTab('atendentes')">🧑‍💼 Ranking Atendentes</button>
+  </div>
+
+  <!-- Tab Filiais -->
+  <div class="tab-content active" id="content-filiais">
+    <div id="filiais-container"><div class="spinner"></div></div>
+  </div>
+
+  <!-- Tab Atendentes -->
+  <div class="tab-content" id="content-atendentes">
+    <div id="atendentes-container"><div class="spinner"></div></div>
+  </div>
+
+</div>
+
+<script>
+  const API_URL = window.location.origin;
+  const token   = () => localStorage.getItem('wp_crm_token');
+
+  window.onload = () => {
+    if (!token()) { window.location.href = 'index.html'; return; }
+    const today    = new Date().toISOString().split('T')[0];
+    const firstDay = `${new Date().getFullYear()}-01-01`;
+    document.getElementById('filterStart').value = firstDay;
+    document.getElementById('filterEnd').value   = today;
+    loadAll();
+  };
+
+  function switchTab(tab) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById(`tab-${tab}`).classList.add('active');
+    document.getElementById(`content-${tab}`).classList.add('active');
+  }
+
+  function loadAll() { loadFiliais(); loadAtendentes(); }
+
+  function getParams() {
+    const s = document.getElementById('filterStart').value;
+    const e = document.getElementById('filterEnd').value;
+    const p = new URLSearchParams();
+    if (s) p.append('start_date', s);
+    if (e) p.append('end_date', e);
+    return p.toString() ? `?${p.toString()}` : '';
+  }
+
+  /* ── Formata segundos em "2h 15m" ou "3m 45s" ── */
+  function fmtSeg(seg) {
+    if (!seg || seg <= 0) return '—';
+    seg = Math.round(seg);
+    const h = Math.floor(seg / 3600);
+    const m = Math.floor((seg % 3600) / 60);
+    const s = seg % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
+
+  function speedClass(seg) {
+    if (!seg || seg <= 0) return '';
+    if (seg < 120)  return 'fast';   // < 2 min
+    if (seg < 600)  return 'medium'; // < 10 min
+    return 'slow';
+  }
+
+  function scoreClass(score, allScores) {
+    const max = Math.max(...allScores);
+    const pct = max > 0 ? score / max : 0;
+    if (pct >= 0.75) return 'top';
+    if (pct >= 0.5)  return 'mid';
+    if (pct >= 0.25) return 'low';
+    return 'bot';
+  }
+
+  /* ════════════════════════════════════════
+     FILIAIS
+  ════════════════════════════════════════ */
+  async function loadFiliais() {
+    const container = document.getElementById('filiais-container');
+    container.innerHTML = '<div class="spinner"></div>';
+    try {
+      const res  = await fetch(`${API_URL}/api/reports/tempo-espera-filiais${getParams()}`, {
+        headers: { 'Authorization': `Bearer ${token()}` }
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        container.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>${json.error || 'Erro ao carregar.'}</p></div>`;
+        return;
+      }
+      const data = json.data || [];
+      if (data.length === 0) {
+        container.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><p>Nenhum registro encontrado no período.</p></div>`;
+        return;
+      }
+      const allScores = data.map(f => f.score);
+      container.innerHTML = data.map((f, fi) => renderFilialBlock(f, fi, allScores)).join('');
+    } catch (e) {
+      container.innerHTML = `<div class="empty-state"><div class="empty-icon">❌</div><p>Erro de conexão.</p></div>`;
+    }
+  }
+
+  function renderFilialBlock(f, fi, allScores) {
+    const cls = scoreClass(f.score, allScores);
+    const setAllScores = f.setores.map(s => s.score);
+    return `
+      <div class="filial-block" id="filial-${fi}">
+        <div class="filial-header" onclick="toggleFilial(${fi})">
+          <div class="filial-header-left">
+            <div class="filial-icon">🏢</div>
+            <div>
+              <div class="filial-name">${f.filial}</div>
+              <div class="filial-meta">${f.setores.length} setor(es) · ${f.total_atendidos} atendimentos</div>
+            </div>
+          </div>
+          <div class="filial-header-right">
+            <div style="text-align:right">
+              <div style="font-size:13px;color:var(--text-secondary)">⏳ Espera média</div>
+              <div class="tempo-value ${speedClass(f.avg_espera_seg)}" style="font-size:18px;font-weight:800">${fmtSeg(f.avg_espera_seg)}</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:13px;color:var(--text-secondary)">💬 Chat médio</div>
+              <div class="tempo-value ${speedClass(f.avg_chat_seg)}" style="font-size:18px;font-weight:800">${fmtSeg(f.avg_chat_seg)}</div>
+            </div>
+            <div class="score-badge ${cls}">
+              <span class="score-val">${f.score}</span>
+              <span class="score-lbl">Score</span>
+            </div>
+            <svg class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </div>
+        </div>
+        <div class="filial-body">
+          <div class="setores-grid">
+            ${f.setores.map(s => renderSetorCard(s, setAllScores)).join('')}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function renderSetorCard(s, allScores) {
+    const cls = scoreClass(s.score, allScores);
+    return `
+      <div class="setor-card">
+        <div class="setor-card-header">
+          <div>
+            <div class="setor-name">${s.setor}</div>
+            <div class="setor-votos">${s.total_atendidos} atendimento(s)</div>
+          </div>
+          <div class="score-badge ${cls}">
+            <span class="score-val">${s.score}</span>
+            <span class="score-lbl">Score</span>
+          </div>
+        </div>
+        <div class="tempo-row">
+          <span class="tempo-label">⏳ Espera média</span>
+          <span class="tempo-value ${speedClass(s.avg_espera_seg)}">${fmtSeg(s.avg_espera_seg)}</span>
+        </div>
+        <div class="tempo-row">
+          <span class="tempo-label">💬 Chat médio</span>
+          <span class="tempo-value ${speedClass(s.avg_chat_seg)}">${fmtSeg(s.avg_chat_seg)}</span>
+        </div>
+        <div class="tempo-row">
+          <span class="tempo-label">⚡ Total médio</span>
+          <span class="tempo-value ${speedClass(s.avg_total_seg)}">${fmtSeg(s.avg_total_seg)}</span>
+        </div>
+      </div>`;
+  }
+
+  function toggleFilial(fi) {
+    document.getElementById(`filial-${fi}`).classList.toggle('open');
+  }
+
+  /* ════════════════════════════════════════
+     ATENDENTES
+  ════════════════════════════════════════ */
+  async function loadAtendentes() {
+    const container = document.getElementById('atendentes-container');
+    container.innerHTML = '<div class="spinner"></div>';
+    try {
+      const res  = await fetch(`${API_URL}/api/reports/tempo-espera-atendentes${getParams()}`, {
+        headers: { 'Authorization': `Bearer ${token()}` }
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        container.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>${json.error || 'Erro ao carregar.'}</p></div>`;
+        return;
+      }
+      const data = json.data || [];
+      if (data.length === 0) {
+        container.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><p>Nenhum registro encontrado no período.</p></div>`;
+        return;
+      }
+      const allScores = data.map(r => r.score);
+      container.innerHTML = `
+        <div class="ranking-table-wrap">
+          <table class="ranking-table">
+            <thead>
+              <tr>
+                <th>Posição</th>
+                <th>Atendente</th>
+                <th>Filial</th>
+                <th>⏳ Espera Média</th>
+                <th>💬 Chat Médio</th>
+                <th>⚡ Total Médio</th>
+                <th>Atendimentos</th>
+                <th>Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.map((row, i) => renderAtendenteRow(row, i, allScores)).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    } catch (e) {
+      container.innerHTML = `<div class="empty-state"><div class="empty-icon">❌</div><p>Erro de conexão.</p></div>`;
+    }
+  }
+
+  function renderAtendenteRow(row, i, allScores) {
+    const medals = ['🥇', '🥈', '🥉'];
+    const medal  = medals[i] || '';
+    const cls    = scoreClass(row.score, allScores);
+    return `
+      <tr>
+        <td>
+          <div class="rank-pos">
+            <span class="medal">${medal}</span>
+            <span>#${i + 1}</span>
+          </div>
+        </td>
+        <td>
+          <div class="atendente-info">
+            <span class="atendente-name">${row.atendente}</span>
+            <span class="atendente-sub">${row.setor}</span>
+          </div>
+        </td>
+        <td style="color:var(--text-secondary);font-size:13px">${row.filial}</td>
+        <td><span class="tempo-value ${speedClass(row.avg_espera_seg)}">${fmtSeg(row.avg_espera_seg)}</span></td>
+        <td><span class="tempo-value ${speedClass(row.avg_chat_seg)}">${fmtSeg(row.avg_chat_seg)}</span></td>
+        <td><span class="tempo-value ${speedClass(row.avg_total_seg)}">${fmtSeg(row.avg_total_seg)}</span></td>
+        <td style="font-weight:600">${row.total_atendidos}</td>
+        <td>
+          <div class="score-badge ${cls}">
+            <span class="score-val">${row.score}</span>
+            <span class="score-lbl">Score</span>
+          </div>
+        </td>
+      </tr>`;
+  }
+</script>
+</body>
+</html>

@@ -4873,6 +4873,135 @@ def report_nps_atendentes():
         return jsonify({'success': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
 
 
+def _segundos_espera_sql():
+    return "EXTRACT(EPOCH FROM (atendido - inicio))"
+
+def _segundos_chat_sql():
+    return "EXTRACT(EPOCH FROM (finalizado - atendido))"
+
+
+@app.route('/api/reports/tempo-espera-atendentes', methods=['GET'])
+@auth_required
+@admin_or_gestor_required
+def report_tempo_espera_atendentes():
+    """Ranking de atendentes por eficiência de tempo de espera."""
+    try:
+        import math
+        start_date = request.args.get('start_date')
+        end_date   = request.args.get('end_date')
+        filters = "AND atendido IS NOT NULL AND nome_atendente IS NOT NULL AND nome_atendente != ''"
+        params  = {}
+        if start_date:
+            filters += " AND inicio >= :start_date"
+            params['start_date'] = start_date
+        if end_date:
+            filters += " AND inicio <= :end_date"
+            params['end_date'] = end_date + ' 23:59:59'
+        sql = db_sql.text(f"""
+            SELECT nome_atendente, setor_filial, COUNT(*) as total_atendidos,
+                   AVG({_segundos_espera_sql()}) as avg_espera_seg,
+                   AVG(CASE WHEN finalizado IS NOT NULL THEN {_segundos_chat_sql()} END) as avg_chat_seg,
+                   MIN({_segundos_espera_sql()}) as min_espera_seg,
+                   MAX({_segundos_espera_sql()}) as max_espera_seg
+            FROM tempo_espera WHERE 1=1 {filters}
+            GROUP BY nome_atendente, setor_filial
+        """)
+        rows = db_sql.session.execute(sql, params).fetchall()
+        result = []
+        for row in rows:
+            nome       = row[0] or '-'
+            sf         = row[1] or '-'
+            total      = int(row[2] or 0)
+            avg_espera = float(row[3] or 0)
+            avg_chat   = float(row[4] or 0)
+            total_med  = avg_espera + avg_chat
+            score      = math.log(total + 1) * 10000 / (total_med + 1) if total > 0 else 0
+            partes     = sf.split(':', 1) if ':' in sf else [sf, '-']
+            setor      = partes[0].strip()
+            filial     = partes[1].strip() if len(partes) > 1 else '-'
+            result.append({
+                'atendente': nome, 'setor_filial': sf, 'setor': setor, 'filial': filial,
+                'total_atendidos': total,
+                'avg_espera_seg': round(avg_espera, 0),
+                'avg_chat_seg':   round(avg_chat, 0),
+                'avg_total_seg':  round(total_med, 0),
+                'min_espera_seg': round(float(row[5] or 0), 0),
+                'max_espera_seg': round(float(row[6] or 0), 0),
+                'score': round(score, 1)
+            })
+        result.sort(key=lambda x: -x['score'])
+        return jsonify({'success': True, 'data': result}), 200
+    except Exception as e:
+        import traceback
+        return jsonify({'success': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
+
+
+@app.route('/api/reports/tempo-espera-filiais', methods=['GET'])
+@auth_required
+@admin_or_gestor_required
+def report_tempo_espera_filiais():
+    """Ranking de filiais/setores por eficiência de tempo de espera."""
+    try:
+        import math
+        start_date = request.args.get('start_date')
+        end_date   = request.args.get('end_date')
+        filters = "AND atendido IS NOT NULL AND setor_filial IS NOT NULL AND setor_filial != ''"
+        params  = {}
+        if start_date:
+            filters += " AND inicio >= :start_date"
+            params['start_date'] = start_date
+        if end_date:
+            filters += " AND inicio <= :end_date"
+            params['end_date'] = end_date + ' 23:59:59'
+        sql = db_sql.text(f"""
+            SELECT setor_filial, COUNT(*) as total_atendidos,
+                   AVG({_segundos_espera_sql()}) as avg_espera_seg,
+                   AVG(CASE WHEN finalizado IS NOT NULL THEN {_segundos_chat_sql()} END) as avg_chat_seg
+            FROM tempo_espera WHERE 1=1 {filters}
+            GROUP BY setor_filial
+        """)
+        rows = db_sql.session.execute(sql, params).fetchall()
+        filiais = {}
+        for row in rows:
+            sf         = row[0] or '-'
+            total      = int(row[1] or 0)
+            avg_espera = float(row[2] or 0)
+            avg_chat   = float(row[3] or 0)
+            total_med  = avg_espera + avg_chat
+            score      = math.log(total + 1) * 10000 / (total_med + 1) if total > 0 else 0
+            partes     = sf.split(':', 1) if ':' in sf else [sf, '-']
+            setor      = partes[0].strip()
+            filial     = partes[1].strip() if len(partes) > 1 else '-'
+            if filial not in filiais:
+                filiais[filial] = []
+            filiais[filial].append({
+                'setor': setor, 'total_atendidos': total,
+                'avg_espera_seg': round(avg_espera, 0),
+                'avg_chat_seg':   round(avg_chat, 0),
+                'avg_total_seg':  round(total_med, 0),
+                'score': round(score, 1)
+            })
+        result = []
+        for filial, setores in filiais.items():
+            setores.sort(key=lambda x: -x['score'])
+            total_f    = sum(s['total_atendidos'] for s in setores)
+            avg_esp_f  = sum(s['avg_espera_seg'] * s['total_atendidos'] for s in setores) / total_f if total_f else 0
+            avg_chat_f = sum((s['avg_chat_seg'] or 0) * s['total_atendidos'] for s in setores) / total_f if total_f else 0
+            score_f    = math.log(total_f + 1) * 10000 / (avg_esp_f + avg_chat_f + 1) if total_f > 0 else 0
+            result.append({
+                'filial': filial, 'total_atendidos': total_f,
+                'avg_espera_seg': round(avg_esp_f, 0),
+                'avg_chat_seg':   round(avg_chat_f, 0),
+                'score': round(score_f, 1),
+                'setores': setores
+            })
+        result.sort(key=lambda x: -x['score'])
+        return jsonify({'success': True, 'data': result}), 200
+    except Exception as e:
+        import traceback
+        return jsonify({'success': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
+
+
 @app.route('/')
 
 def index_page():
@@ -4880,7 +5009,7 @@ def index_page():
 
 @app.route('/<path:path>')
 def serve_frontend(path):
-    if path in ('index.html', 'dashboard.html', 'admin.html', 'reports.html', 'ranking.html', 'nps_dashboard.html'):
+    if path in ('index.html', 'dashboard.html', 'admin.html', 'reports.html', 'ranking.html', 'nps_dashboard.html', 'tempo_espera_dashboard.html'):
         return send_from_directory(ROOT_DIR, path)
     if path.startswith('css/') or path.startswith('js/'):
         return send_from_directory(ROOT_DIR, path)
