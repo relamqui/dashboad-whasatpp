@@ -4728,6 +4728,146 @@ def report_ranking():
         import traceback
         return jsonify({'success': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
 
+@app.route('/api/reports/nps-filiais', methods=['GET'])
+@auth_required
+@admin_or_gestor_required
+def report_nps_filiais():
+    """Retorna ranking NPS por Filial e Setor."""
+    try:
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+
+        filters = ""
+        params = {}
+        if start_date:
+            filters += " AND criado_em >= :start_date"
+            params['start_date'] = start_date
+        if end_date:
+            filters += " AND criado_em <= :end_date"
+            params['end_date'] = end_date + ' 23:59:59'
+
+        sql = db_sql.text(f"""
+            SELECT filial, setor, atendente,
+                   COUNT(*) as total_votos,
+                   AVG(nota) as media_nota,
+                   SUM(CASE WHEN nota >= 9 THEN 1 ELSE 0 END) as promotores,
+                   SUM(CASE WHEN nota >= 7 AND nota <= 8 THEN 1 ELSE 0 END) as neutros,
+                   SUM(CASE WHEN nota <= 6 THEN 1 ELSE 0 END) as detratores
+            FROM nps_votos
+            WHERE 1=1 {filters}
+            GROUP BY filial, setor, atendente
+            ORDER BY filial, setor, media_nota DESC
+        """)
+        rows = db_sql.session.execute(sql, params).fetchall()
+
+        # Organiza por filial > setor
+        filiais = {}
+        for row in rows:
+            filial = row[0] or 'Sem Filial'
+            setor = row[1] or 'Sem Setor'
+            total = row[3] or 0
+            promotores = row[5] or 0
+            detratores = row[7] or 0
+            nps = round(((promotores - detratores) / total) * 100) if total > 0 else 0
+
+            if filial not in filiais:
+                filiais[filial] = {}
+            if setor not in filiais[filial]:
+                filiais[filial][setor] = {
+                    'total_votos': 0, 'media_nota': 0,
+                    'promotores': 0, 'neutros': 0, 'detratores': 0,
+                    'notas_sum': 0, 'nps': 0
+                }
+
+            s = filiais[filial][setor]
+            s['total_votos'] += total
+            s['notas_sum'] += (row[4] or 0) * total
+            s['promotores'] += promotores
+            s['neutros'] += (row[6] or 0)
+            s['detratores'] += detratores
+
+        # Calcula médias finais por setor
+        result = []
+        for filial, setores in filiais.items():
+            setores_list = []
+            for setor, s in setores.items():
+                total = s['total_votos']
+                media = round(s['notas_sum'] / total, 1) if total > 0 else 0
+                nps_score = round(((s['promotores'] - s['detratores']) / total) * 100) if total > 0 else 0
+                setores_list.append({
+                    'setor': setor,
+                    'total_votos': total,
+                    'media_nota': media,
+                    'promotores': s['promotores'],
+                    'neutros': s['neutros'],
+                    'detratores': s['detratores'],
+                    'nps_score': nps_score
+                })
+            setores_list.sort(key=lambda x: -x['nps_score'])
+            result.append({'filial': filial, 'setores': setores_list})
+        result.sort(key=lambda x: x['filial'])
+        return jsonify({'success': True, 'data': result}), 200
+    except Exception as e:
+        import traceback
+        return jsonify({'success': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
+
+
+@app.route('/api/reports/nps-atendentes', methods=['GET'])
+@auth_required
+@admin_or_gestor_required
+def report_nps_atendentes():
+    """Retorna ranking NPS por Atendente."""
+    try:
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+
+        filters = ""
+        params = {}
+        if start_date:
+            filters += " AND criado_em >= :start_date"
+            params['start_date'] = start_date
+        if end_date:
+            filters += " AND criado_em <= :end_date"
+            params['end_date'] = end_date + ' 23:59:59'
+
+        sql = db_sql.text(f"""
+            SELECT atendente, filial, setor,
+                   COUNT(*) as total_votos,
+                   AVG(nota) as media_nota,
+                   SUM(CASE WHEN nota >= 9 THEN 1 ELSE 0 END) as promotores,
+                   SUM(CASE WHEN nota >= 7 AND nota <= 8 THEN 1 ELSE 0 END) as neutros,
+                   SUM(CASE WHEN nota <= 6 THEN 1 ELSE 0 END) as detratores
+            FROM nps_votos
+            WHERE atendente IS NOT NULL AND atendente != '' {filters}
+            GROUP BY atendente, filial, setor
+            ORDER BY media_nota DESC
+        """)
+        rows = db_sql.session.execute(sql, params).fetchall()
+
+        result = []
+        for row in rows:
+            total = row[3] or 0
+            promotores = row[5] or 0
+            detratores = row[7] or 0
+            nps_score = round(((promotores - detratores) / total) * 100) if total > 0 else 0
+            result.append({
+                'atendente': row[0] or '-',
+                'filial': row[1] or '-',
+                'setor': row[2] or '-',
+                'total_votos': total,
+                'media_nota': round(row[4] or 0, 1),
+                'promotores': promotores,
+                'neutros': row[6] or 0,
+                'detratores': detratores,
+                'nps_score': nps_score
+            })
+        result.sort(key=lambda x: -x['nps_score'])
+        return jsonify({'success': True, 'data': result}), 200
+    except Exception as e:
+        import traceback
+        return jsonify({'success': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
+
+
 @app.route('/')
 
 def index_page():
@@ -4735,7 +4875,7 @@ def index_page():
 
 @app.route('/<path:path>')
 def serve_frontend(path):
-    if path in ('index.html', 'dashboard.html', 'admin.html', 'reports.html', 'ranking.html'):
+    if path in ('index.html', 'dashboard.html', 'admin.html', 'reports.html', 'ranking.html', 'nps_dashboard.html'):
         return send_from_directory(ROOT_DIR, path)
     if path.startswith('css/') or path.startswith('js/'):
         return send_from_directory(ROOT_DIR, path)
