@@ -4749,10 +4749,10 @@ def report_nps_filiais():
         sql = db_sql.text(f"""
             SELECT filial, setor, atendente,
                    COUNT(*) as total_votos,
-                   AVG(nota) as media_nota,
-                   SUM(CASE WHEN nota >= 9 THEN 1 ELSE 0 END) as promotores,
-                   SUM(CASE WHEN nota >= 7 AND nota <= 8 THEN 1 ELSE 0 END) as neutros,
-                   SUM(CASE WHEN nota <= 6 THEN 1 ELSE 0 END) as detratores
+                   AVG(voto) as media_nota,
+                   SUM(CASE WHEN voto >= 9 THEN 1 ELSE 0 END) as promotores,
+                   SUM(CASE WHEN voto >= 7 AND voto <= 8 THEN 1 ELSE 0 END) as neutros,
+                   SUM(CASE WHEN voto <= 6 THEN 1 ELSE 0 END) as detratores
             FROM nps_votos
             WHERE 1=1 {filters}
             GROUP BY filial, setor, atendente
@@ -4833,10 +4833,10 @@ def report_nps_atendentes():
         sql = db_sql.text(f"""
             SELECT atendente, filial, setor,
                    COUNT(*) as total_votos,
-                   AVG(nota) as media_nota,
-                   SUM(CASE WHEN nota >= 9 THEN 1 ELSE 0 END) as promotores,
-                   SUM(CASE WHEN nota >= 7 AND nota <= 8 THEN 1 ELSE 0 END) as neutros,
-                   SUM(CASE WHEN nota <= 6 THEN 1 ELSE 0 END) as detratores
+                   AVG(voto) as media_nota,
+                   SUM(CASE WHEN voto >= 9 THEN 1 ELSE 0 END) as promotores,
+                   SUM(CASE WHEN voto >= 7 AND voto <= 8 THEN 1 ELSE 0 END) as neutros,
+                   SUM(CASE WHEN voto <= 6 THEN 1 ELSE 0 END) as detratores
             FROM nps_votos
             WHERE atendente IS NOT NULL AND atendente != '' {filters}
             GROUP BY atendente, filial, setor
