@@ -1,284 +1,360 @@
 <!DOCTYPE html>
-<html class="dark" lang="pt-BR"><head>
-<meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<style>
-        body { font-family: 'Inter', sans-serif; background-color: #031427; color: #d3e4fe; margin: 0; overflow-x: hidden; }
-        .glass-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 40px 60px -15px rgba(15, 23, 42, 0.5); }
-        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
-        @page {
-            size: 1920px 1500px; /* Tamanho customizado gigante para forçar 1 única página */
-            margin: 0mm;
-        }
-        @media print {
-            .no-print { display: none !important; }
-            body { background-color: #031427 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-            main { max-width: 100% !important; padding: 20px !important; }
-            .glass-card { break-inside: avoid; border: 1px solid rgba(255,255,255,0.1) !important; box-shadow: none !important; background: rgba(30, 41, 59, 0.9) !important; }
-            .page-break { page-break-before: always; }
-        }
-</style>
-<script id="tailwind-config">
-tailwind.config = { darkMode: "class", theme: { extend: { colors: { "secondary-container": "#0053db", "background": "#031427", "surface-container-lowest": "#000f21", "on-primary-fixed": "#131b2e", "inverse-surface": "#d3e4fe", "on-tertiary": "#003824", "surface": "#031427", "tertiary-container": "#001c10", "secondary": "#b4c5ff", "error-container": "#93000a", "surface-bright": "#2a3a4f", "tertiary-fixed": "#6ffbbe", "surface-container-low": "#0b1c30", "on-secondary-fixed": "#00174b", "primary": "#bec6e0", "surface-variant": "#26364a", "on-error": "#690005", "on-surface": "#d3e4fe", "surface-tint": "#bec6e0", "surface-container": "#102034", "tertiary": "#4edea3", "surface-container-highest": "#26364a", "on-secondary-container": "#cdd7ff", "on-primary-fixed-variant": "#3f465c", "on-background": "#d3e4fe", "on-surface-variant": "#c6c6cd", "on-primary": "#283044", "primary-container": "#0f172a", "on-error-container": "#ffdad6", "on-primary-container": "#798098", "on-secondary": "#002a78" }, fontFamily: { "headline-md": ["Inter"], "body-sm": ["Inter"], "display-xl": ["Inter"], "body-md": ["Inter"], "label-caps": ["Inter"], "headline-lg": ["Inter"], "title-sm": ["Inter"] }, fontSize: { "headline-md": ["24px", {"lineHeight": "1.3", "fontWeight": "700"}], "body-sm": ["14px", {"lineHeight": "1.5", "fontWeight": "500"}], "display-xl": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "800"}], "body-md": ["16px", {"lineHeight": "1.6", "fontWeight": "500"}], "label-caps": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "700"}], "headline-lg": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.01em", "fontWeight": "800"}], "title-sm": ["18px", {"lineHeight": "1.4", "fontWeight": "600"}] } } } }
-</script>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WP CRM — Relatórios</title>
+  <meta name="description" content="Painel de relatórios: NPS e Tempo de Espera por filial, setor e atendente." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/dashboard.css" />
+  <style>
+    :root {
+      --green:  #00c896;
+      --blue:   #3498db;
+      --cyan:   #00c8e0;
+      --yellow: #f5a623;
+      --red:    #e74c3c;
+    }
+    body { height:auto; overflow:auto; background-color:var(--bg-app); color:var(--text-primary); font-family:'Inter',sans-serif; }
+    .page-container { max-width:1400px; margin:0 auto; padding:32px 40px; }
+
+    .back-btn { display:flex; align-items:center; gap:8px; color:var(--text-secondary); background:none; border:none; font-size:14px; cursor:pointer; margin-bottom:16px; font-family:'Inter',sans-serif; transition:color .2s; }
+    .back-btn:hover { color:var(--text-primary); }
+    .page-title h1 { font-size:26px; font-weight:800; margin:0 0 4px; color:var(--text-primary); }
+    .page-title span { font-size:13px; color:var(--text-secondary); }
+
+    .filters-bar { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:18px 24px; display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap; margin:24px 0; }
+    .form-group { display:flex; flex-direction:column; gap:6px; }
+    .form-group label { font-size:11px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.06em; }
+    .form-group input { padding:10px 14px; border-radius:8px; background:var(--bg-input); border:1px solid var(--border); color:white; outline:none; font-size:14px; font-family:'Inter',sans-serif; min-width:145px; }
+    .btn-filter { background:rgba(255,255,255,.08); color:var(--text-primary); border:1px solid var(--border); padding:10px 22px; border-radius:8px; cursor:pointer; font-weight:600; font-size:14px; font-family:'Inter',sans-serif; transition:background .2s,transform .1s; }
+    .btn-filter:hover { background:rgba(255,255,255,.13); transform:translateY(-1px); }
+
+    .main-tabs { display:flex; gap:0; border-bottom:2px solid var(--border); margin-bottom:28px; }
+    .main-tab-btn { padding:14px 28px; border:none; background:transparent; color:var(--text-secondary); font-size:15px; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif; border-bottom:3px solid transparent; margin-bottom:-2px; transition:color .2s,border-color .2s; }
+    .main-tab-btn.nps.active    { color:var(--text-primary); border-bottom-color:var(--green); }
+    .main-tab-btn.tempo.active  { color:var(--text-primary); border-bottom-color:var(--cyan); }
+    .main-tab-content { display:none; }
+    .main-tab-content.active { display:block; }
+
+    .sub-tabs { display:flex; gap:4px; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:4px; margin-bottom:24px; width:fit-content; }
+    .sub-tab-btn { padding:8px 20px; border-radius:9px; border:none; background:transparent; color:var(--text-secondary); font-size:13px; font-weight:500; cursor:pointer; font-family:'Inter',sans-serif; transition:all .2s; }
+    .sub-tab-btn.active-nps   { background:linear-gradient(135deg,#00c896,#00a87a); color:white; font-weight:700; }
+    .sub-tab-btn.active-tempo { background:linear-gradient(135deg,#00c8e0,#0098b0); color:white; font-weight:700; }
+    .sub-tab-content { display:none; }
+    .sub-tab-content.active { display:block; }
+
+    .filial-block { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; margin-bottom:16px; overflow:hidden; transition:box-shadow .2s; }
+    .filial-block:hover { box-shadow:0 4px 24px rgba(0,0,0,.18); }
+    .filial-header { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; cursor:pointer; user-select:none; transition:background .2s; }
+    .filial-header:hover { background:rgba(255,255,255,.03); }
+    .filial-header-left { display:flex; align-items:center; gap:14px; }
+    .filial-icon { width:42px; height:42px; border-radius:11px; display:flex; align-items:center; justify-content:center; font-size:18px; }
+    .filial-icon.ni { background:linear-gradient(135deg,rgba(0,200,150,.2),rgba(52,152,219,.2)); }
+    .filial-icon.ti { background:linear-gradient(135deg,rgba(0,200,224,.2),rgba(52,152,219,.2)); }
+    .filial-name { font-size:16px; font-weight:700; }
+    .filial-meta { font-size:12px; color:var(--text-secondary); margin-top:2px; }
+    .filial-header-right { display:flex; align-items:center; gap:18px; }
+    .chevron { transition:transform .3s; color:var(--text-secondary); }
+    .filial-block.open .chevron { transform:rotate(180deg); }
+    .filial-body { display:none; padding:0 14px 14px; }
+    .filial-block.open .filial-body { display:block; }
+
+    .setores-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+    .setor-card { background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:12px; padding:16px; transition:transform .2s,border-color .2s; }
+    .setor-card:hover { transform:translateY(-2px); }
+    .setor-card-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; }
+    .setor-name { font-size:14px; font-weight:600; }
+    .setor-meta { font-size:11px; color:var(--text-secondary); margin-top:2px; }
+
+    .nps-circle { display:inline-flex; align-items:center; justify-content:center; width:52px; height:52px; border-radius:50%; font-size:14px; font-weight:800; border:3px solid; }
+    .nps-circle.excelente { color:var(--green);  border-color:var(--green);  background:rgba(0,200,150,.1); }
+    .nps-circle.bom       { color:var(--blue);   border-color:var(--blue);   background:rgba(52,152,219,.1); }
+    .nps-circle.neutro    { color:var(--yellow); border-color:var(--yellow); background:rgba(245,166,35,.1); }
+    .nps-circle.ruim      { color:var(--red);    border-color:var(--red);    background:rgba(231,76,60,.1); }
+
+    .media-nota { font-size:20px; font-weight:800; }
+    .media-nota.alta  { color:var(--green); }
+    .media-nota.media { color:var(--yellow); }
+    .media-nota.baixa { color:var(--red); }
+
+    .nps-bars { display:flex; flex-direction:column; gap:6px; margin-top:10px; }
+    .nps-bar-row { display:flex; align-items:center; gap:8px; font-size:12px; }
+    .nps-bar-label { width:70px; color:var(--text-secondary); }
+    .nps-bar-track { flex:1; height:6px; background:rgba(255,255,255,.08); border-radius:10px; overflow:hidden; }
+    .nps-bar-fill { height:100%; border-radius:10px; transition:width .5s ease; }
+    .nps-bar-fill.prom { background:var(--green); }
+    .nps-bar-fill.neut { background:var(--yellow); }
+    .nps-bar-fill.detr { background:var(--red); }
+    .nps-bar-count { width:22px; text-align:right; color:var(--text-secondary); }
+
+    .score-badge { display:inline-flex; flex-direction:column; align-items:center; justify-content:center; min-width:52px; height:52px; border-radius:10px; font-weight:800; border:2px solid; padding:0 8px; }
+    .score-badge .sv { font-size:14px; line-height:1; }
+    .score-badge .sl { font-size:9px; opacity:.65; margin-top:2px; text-transform:uppercase; }
+    .score-badge.top { color:var(--green);  border-color:var(--green);  background:rgba(0,200,150,.1); }
+    .score-badge.mid { color:var(--blue);   border-color:var(--blue);   background:rgba(52,152,219,.1); }
+    .score-badge.low { color:var(--yellow); border-color:var(--yellow); background:rgba(245,166,35,.1); }
+    .score-badge.bot { color:var(--red);    border-color:var(--red);    background:rgba(231,76,60,.1); }
+
+    .tempo-row { display:flex; align-items:center; justify-content:space-between; padding:7px 0; border-bottom:1px solid rgba(255,255,255,.05); font-size:13px; }
+    .tempo-row:last-child { border-bottom:none; }
+    .tempo-label { color:var(--text-secondary); }
+    .tempo-value { font-weight:700; font-family:monospace; font-size:13px; }
+    .tempo-value.fast   { color:var(--green); }
+    .tempo-value.medium { color:var(--yellow); }
+    .tempo-value.slow   { color:var(--red); }
+
+    .stat-inline { text-align:right; }
+    .stat-val { font-size:18px; font-weight:800; }
+    .stat-lbl { font-size:11px; color:var(--text-secondary); margin-top:1px; }
+
+    .ranking-table-wrap { overflow-x:auto; border-radius:14px; border:1px solid var(--border); background:var(--bg-card); }
+    table.rtable { width:100%; border-collapse:collapse; }
+    table.rtable th { padding:13px 16px; text-align:left; font-size:11px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.07em; background:rgba(0,0,0,.2); border-bottom:1px solid var(--border); }
+    table.rtable td { padding:13px 16px; font-size:13px; color:var(--text-primary); border-bottom:1px solid rgba(255,255,255,.04); }
+    table.rtable tr:last-child td { border-bottom:none; }
+    table.rtable tr:hover td { background:rgba(255,255,255,.02); }
+
+    .rank-pos { display:flex; align-items:center; gap:8px; font-weight:700; color:var(--text-secondary); }
+    .medal { font-size:18px; }
+    .att-info { display:flex; flex-direction:column; }
+    .att-name { font-weight:600; font-size:14px; }
+    .att-sub  { font-size:12px; color:var(--text-secondary); margin-top:1px; }
+
+    .pill { display:inline-flex; align-items:center; padding:2px 9px; border-radius:20px; font-size:12px; font-weight:600; }
+    .pill.prom { background:rgba(0,200,150,.15); color:var(--green); }
+    .pill.neut { background:rgba(245,166,35,.15); color:var(--yellow); }
+    .pill.detr { background:rgba(231,76,60,.15);  color:var(--red); }
+
+    .empty-state { text-align:center; padding:56px 20px; color:var(--text-secondary); }
+    .empty-icon  { font-size:38px; margin-bottom:10px; }
+    .spinner { display:flex; justify-content:center; align-items:center; padding:56px; }
+    .spinner::after { content:''; width:34px; height:34px; border:3px solid rgba(255,255,255,.08); border-radius:50%; animation:spin .8s linear infinite; }
+    .spinner.nps-spin::after   { border-top-color:var(--green); }
+    .spinner.tempo-spin::after { border-top-color:var(--cyan); }
+    @keyframes spin { to { transform:rotate(360deg); } }
+  </style>
 </head>
-<body class="min-h-screen flex flex-col relative">
-<!-- Background Decoration -->
-<div class="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
-<div class="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-blue-600/5 blur-[120px]"></div>
-<div class="absolute bottom-[-10%] right-[-5%] w-[40%] h-[40%] rounded-full bg-indigo-900/10 blur-[100px]"></div>
-</div>
+<body>
+<div class="page-container">
 
-<header class="flex justify-between items-center w-full px-12 py-4 sticky top-0 z-50 bg-slate-950/70 backdrop-blur-md border-b border-white/10 shadow-lg shadow-indigo-950/50">
-<div class="text-lg font-bold tracking-tighter text-slate-100 uppercase font-inter">WhatsApp CRM Executive Analytics</div>
-<div class="flex items-center gap-4 no-print">
-<button onclick="window.print()" class="bg-blue-600 text-white font-inter text-sm font-medium px-4 py-2 rounded-lg hover:bg-blue-500 transition-all flex items-center gap-2"><span class="material-symbols-outlined text-sm">print</span> Export PDF</button>
-</div>
-</header>
-<main class="flex-grow p-8 space-y-8 max-w-[1920px] mx-auto w-full">
-<!-- Top KPI Row -->
-<div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-<!-- Total Leads -->
-<div class="glass-card p-6 rounded-xl flex flex-col justify-between">
-<div class="flex justify-between items-start mb-4">
-<div><p class="font-label-caps text-label-caps text-on-surface-variant uppercase">Total Leads</p><h3 class="font-headline-md text-headline-md mt-1">59</h3></div>
-<div class="p-2 rounded-full bg-blue-500/10 text-blue-400"><span class="material-symbols-outlined">group</span></div>
-</div>
-</div>
-<!-- Msgs Rec -->
-<div class="glass-card p-6 rounded-xl flex flex-col justify-between">
-<div class="flex justify-between items-start mb-4">
-<div><p class="font-label-caps text-label-caps text-on-surface-variant uppercase">Mensagens Recebidas</p><h3 class="font-headline-md text-headline-md mt-1">286</h3></div>
-<div class="p-2 rounded-full bg-tertiary/10 text-tertiary"><span class="material-symbols-outlined">mail</span></div>
-</div>
-</div>
-<!-- Msgs Sent -->
-<div class="glass-card p-6 rounded-xl flex flex-col justify-between">
-<div class="flex justify-between items-start mb-4">
-<div><p class="font-label-caps text-label-caps text-on-surface-variant uppercase">Mensagens Enviadas</p><h3 class="font-headline-md text-headline-md mt-1">281</h3></div>
-<div class="p-2 rounded-full bg-secondary-container/10 text-secondary"><span class="material-symbols-outlined">send</span></div>
-</div>
-</div>
-<!-- Resp Time -->
-<div class="glass-card p-6 rounded-xl flex flex-col justify-between">
-<div class="flex justify-between items-start mb-4">
-<div><p class="font-label-caps text-label-caps text-on-surface-variant uppercase">Tempo de Resposta</p><h3 class="font-headline-md text-headline-md mt-1">0 minutos</h3></div>
-<div class="p-2 rounded-full bg-primary/10 text-primary"><span class="material-symbols-outlined">timer</span></div>
-</div>
-</div>
-</div>
+  <button class="back-btn" onclick="location.href='dashboard.html'">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Voltar ao Dashboard
+  </button>
+  <div class="page-title">
+    <h1>📊 Relatórios</h1>
+    <span>NPS de satisfação e eficiência de tempo de atendimento</span>
+  </div>
 
-<!-- Middle Row -->
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-<!-- Heatmap / Uso Horários -->
-<div class="lg:col-span-2 glass-card p-8 rounded-xl relative overflow-hidden flex flex-col justify-center">
-    <h2 class="font-headline-md text-headline-md text-on-surface mb-4 text-blue-400">Observações / Recomendações</h2>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10 mt-4">
-        <div class="bg-gray-800/80 rounded-xl p-5 border border-gray-700">
-            <h3 class="text-lg font-bold text-blue-400 mb-2">1. Infraestrutura Consolidada</h3>
-            <p class="text-sm text-gray-300">O sistema mapeia fielmente a operação: <strong>4 Filiais</strong> e <strong>20 Setores</strong>. Toda a equipe de <strong>32 atendentes</strong> está operando em alta escala.</p>
-        </div>
-        <div class="bg-gray-800/80 rounded-xl p-5 border border-gray-700">
-            <h3 class="text-lg font-bold text-tertiary mb-2">2. Economia com Automação (Bot)</h3>
-            <p class="text-sm text-gray-300">A triagem automática é precisa. <strong>98.3%</strong> dos contatos já recebem classificação automática, poupando centenas de horas humanas na recepção dos leads.</p>
-        </div>
-        <div class="bg-gray-800/80 rounded-xl p-5 border border-gray-700">
-            <h3 class="text-lg font-bold text-purple-400 mb-2">3. Centralização da Operação</h3>
-            <p class="text-sm text-gray-300">Já abrimos <strong>85 protocolos oficiais</strong>. A comunicação está 100% blindada dentro dos servidores da empresa, eliminando celulares pulverizados.</p>
-        </div>
-        <div class="bg-gray-800/80 rounded-xl p-5 border border-gray-700">
-            <h3 class="text-lg font-bold text-orange-400 mb-2">4. Foco na Cobrança de Processos</h3>
-            <p class="text-sm text-gray-300">A tecnologia atendeu à demanda. O painel revela que o gargalo agora é <strong>comportamental</strong>: a gerência deve usar essas métricas para cobrar o engajamento da equipe nas conversas.</p>
-        </div>
+  <div class="filters-bar">
+    <div class="form-group"><label>Data Início</label><input type="date" id="filterStart" /></div>
+    <div class="form-group"><label>Data Fim</label><input type="date" id="filterEnd" /></div>
+    <button class="btn-filter" onclick="loadAll()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle;margin-right:6px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      Filtrar
+    </button>
+  </div>
+
+  <!-- Abas Principais -->
+  <div class="main-tabs">
+    <button class="main-tab-btn nps active" id="main-tab-nps" onclick="switchMain('nps')">⭐ NPS de Satisfação</button>
+    <button class="main-tab-btn tempo" id="main-tab-tempo" onclick="switchMain('tempo')">⏱️ Tempo de Espera</button>
+  </div>
+
+  <!-- NPS -->
+  <div class="main-tab-content active" id="main-content-nps">
+    <div class="sub-tabs">
+      <button class="sub-tab-btn active-nps" id="nps-sub-filiais" onclick="switchSub('nps','filiais')">🏢 Por Filial / Setor</button>
+      <button class="sub-tab-btn" id="nps-sub-atendentes" onclick="switchSub('nps','atendentes')">🧑‍💼 Ranking Atendentes</button>
     </div>
-</div>
+    <div class="sub-tab-content active" id="nps-content-filiais"><div id="nps-filiais-box"><div class="spinner nps-spin"></div></div></div>
+    <div class="sub-tab-content" id="nps-content-atendentes"><div id="nps-atendentes-box"><div class="spinner nps-spin"></div></div></div>
+  </div>
 
-<!-- Donut Chart: Status do Atendimento -->
-<div class="glass-card p-8 rounded-xl flex flex-col">
-<h2 class="font-headline-md text-headline-md text-on-surface mb-8">Status do Atendimento</h2>
-<div class="flex-grow flex items-center justify-center relative">
-<div class="w-48 h-48 rounded-full border-[16px] border-blue-500/20 relative flex items-center justify-center">
-<div class="absolute inset-[-16px] w-48 h-48 rounded-full border-[16px] border-transparent border-t-blue-500 border-r-blue-500 transform rotate-45"></div>
-<div class="absolute inset-[-16px] w-48 h-48 rounded-full border-[16px] border-transparent border-b-tertiary transform -rotate-12"></div>
-<div class="text-center">
-<p class="text-headline-lg font-headline-lg leading-none">85%</p>
-<p class="text-[10px] font-label-caps text-on-surface-variant uppercase mt-1">Assumidos</p>
-</div>
-</div>
-</div>
-<div class="mt-8 space-y-3">
-<div class="flex justify-between items-center"><div class="flex items-center gap-2"><div class="w-3 h-3 rounded-sm bg-blue-500"></div><span class="text-body-sm font-body-sm">Finalizados (Voltou p/ Bot)</span></div><span class="font-bold">17</span></div>
-<div class="flex justify-between items-center"><div class="flex items-center gap-2"><div class="w-3 h-3 rounded-sm bg-tertiary"></div><span class="text-body-sm font-body-sm">Em Atendimento (Assumidos)</span></div><span class="font-bold">6</span></div>
-<div class="flex justify-between items-center"><div class="flex items-center gap-2"><div class="w-3 h-3 rounded-sm bg-orange-500"></div><span class="text-body-sm font-body-sm">Aguardando Atendente</span></div><span class="font-bold text-orange-400">13</span></div>
-<div class="flex justify-between items-center"><div class="flex items-center gap-2"><div class="w-3 h-3 rounded-sm bg-slate-600"></div><span class="text-body-sm font-body-sm">Em Triagem (Bot)</span></div><span class="font-bold text-slate-400">49</span></div>
-</div>
-</div>
-</div>
-
-<!-- Bottom Row: Dynamic Tables -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-12 mt-6">
-
-    <!-- Ranking de Filiais -->
-    <div class="glass-card p-8 rounded-xl flex flex-col h-full">
-        <h2 class="font-headline-md text-headline-md text-on-surface mb-6 flex items-center gap-2"><span class="material-symbols-outlined text-tertiary">store</span> Uso do Sistema por Filial</h2>
-        <div class="overflow-x-auto">
-            <table class="min-w-full text-left text-sm text-on-surface">
-                <thead class="border-b border-white/10 text-xs font-label-caps uppercase text-on-surface-variant">
-                    <tr><th class="px-4 py-3">Unidade / Filial</th><th class="px-4 py-3 text-center">Atendimentos Assumidos</th></tr>
-                </thead>
-                <tbody class="divide-y divide-white/5">
-    
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-4 font-medium">Boa Esperança</td>
-                        <td class="px-4 py-4 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-tertiary/20 text-tertiary">4</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-4 font-medium">Lavras</td>
-                        <td class="px-4 py-4 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-tertiary/20 text-tertiary">3</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-4 font-medium">Areado</td>
-                        <td class="px-4 py-4 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-tertiary/20 text-tertiary">1</span></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+  <!-- TEMPO -->
+  <div class="main-tab-content" id="main-content-tempo">
+    <div class="sub-tabs">
+      <button class="sub-tab-btn active-tempo" id="tempo-sub-filiais" onclick="switchSub('tempo','filiais')">🏢 Por Filial / Setor</button>
+      <button class="sub-tab-btn" id="tempo-sub-atendentes" onclick="switchSub('tempo','atendentes')">🧑‍💼 Ranking Atendentes</button>
     </div>
-    
-    <!-- Desempenho Atendentes -->
-    <div class="glass-card p-8 rounded-xl flex flex-col h-full">
-        <h2 class="font-headline-md text-headline-md text-on-surface mb-6 flex items-center gap-2"><span class="material-symbols-outlined text-blue-400">group</span> Desempenho por Atendente</h2>
-        <div class="overflow-x-auto">
-            <table class="min-w-full text-left text-sm text-on-surface">
-                <thead class="border-b border-white/10 text-xs font-label-caps uppercase text-on-surface-variant sticky top-0 bg-slate-900">
-                    <tr><th class="px-4 py-3">Nome do Atendente</th><th class="px-4 py-3 text-center">Contatos na Carteira</th></tr>
-                </thead>
-                <tbody class="divide-y divide-white/5">
-    
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Jessica Pereira Ferreira</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-blue-500/20 text-blue-400">3</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Elisangela Silva</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-blue-500/20 text-blue-400">2</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Wilza Torres</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-blue-500/20 text-blue-400">1</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Mable Pereira Borges Siqueira</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-blue-500/20 text-blue-400">1</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Alisson Matheus</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-blue-500/20 text-blue-400">1</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Maria de Fatima felicio Terra</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Valeria Lima Martins Figueiredo</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Matheus Mra</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Alexandre Tadeu</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Ana Flavia Leonardo</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Maristela</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Juliana Martins</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">temeny</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Cinthia Rodrigues</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Eduarda Fernanda Lopes</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Kamila da Silva Costa</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">marina</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Temeny</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Daniel Ferreira</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">marcos teste</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">marcus Vinicius Sales de Abreu</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Priscila Nunes Oliveira</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Maria de Fatima Felicio Terra</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Leonardo Faleiro Paolinelli Correa</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Ana Cristina Silva</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Mable Pereira Borges</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Priscila</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                    <tr class="hover:bg-white/5 transition-colors">
-                        <td class="px-4 py-3 font-medium">Renan Vitor Silva</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-500">0</span></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-    
-</div>
+    <div class="sub-tab-content active" id="tempo-content-filiais"><div id="tempo-filiais-box"><div class="spinner tempo-spin"></div></div></div>
+    <div class="sub-tab-content" id="tempo-content-atendentes"><div id="tempo-atendentes-box"><div class="spinner tempo-spin"></div></div></div>
+  </div>
 
-</main>
-<footer class="flex justify-between items-center w-full px-12 py-6 mt-auto bg-slate-950 border-t border-white/5">
-<p class="font-inter text-xs text-slate-500">© 2026 Corpal WP - Sistema Operacional Inteligente.</p>
-</footer>
-</body></html>
+</div>
+<script>
+  const API = window.location.origin;
+  const tok = () => localStorage.getItem('wp_crm_token');
+
+  window.onload = () => {
+    if (!tok()) { location.href = 'index.html'; return; }
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('filterStart').value = `${new Date().getFullYear()}-01-01`;
+    document.getElementById('filterEnd').value   = today;
+    loadAll();
+  };
+
+  function switchMain(t) {
+    document.querySelectorAll('.main-tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.main-tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById('main-tab-'+t).classList.add('active');
+    document.getElementById('main-content-'+t).classList.add('active');
+  }
+  function switchSub(sec, sub) {
+    const ac = 'active-'+sec;
+    document.querySelectorAll('[id^="'+sec+'-sub-"]').forEach(b => b.classList.remove(ac));
+    document.querySelectorAll('[id^="'+sec+'-content-"]').forEach(c => c.classList.remove('active'));
+    document.getElementById(sec+'-sub-'+sub).classList.add(ac);
+    document.getElementById(sec+'-content-'+sub).classList.add('active');
+  }
+  function tog(id) { document.getElementById(id).classList.toggle('open'); }
+
+  function qp() {
+    const s = document.getElementById('filterStart').value, e = document.getElementById('filterEnd').value;
+    const p = new URLSearchParams();
+    if (s) p.append('start_date',s); if (e) p.append('end_date',e);
+    return p.toString() ? '?'+p.toString() : '';
+  }
+
+  function loadAll() { loadNpsF(); loadNpsA(); loadTeF(); loadTeA(); }
+
+  /* ── Helpers ── */
+  function fmtS(s) { if(!s||s<=0) return '—'; s=Math.round(s); const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60; if(h>0)return h+'h '+m+'m'; if(m>0)return m+'m '+sc+'s'; return sc+'s'; }
+  function spC(s) { if(!s||s<=0)return''; if(s<120)return'fast'; if(s<600)return'medium'; return'slow'; }
+  function scC(s,a) { const mx=Math.max(...a),p=mx>0?s/mx:0; if(p>=.75)return'top'; if(p>=.5)return'mid'; if(p>=.25)return'low'; return'bot'; }
+  function npsC(s) { if(s>=75)return'excelente'; if(s>=50)return'bom'; if(s>=0)return'neutro'; return'ruim'; }
+  function mC(n) { if(n>=4.5)return'alta'; if(n>=3)return'media'; return'baixa'; }
+  function bp(v,t) { return t>0?Math.round((v/t)*100):0; }
+  function chv() { return'<svg class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>'; }
+  function errH(m) { return'<div class="empty-state"><div class="empty-icon">⚠️</div><p>'+m+'</p></div>'; }
+  function empH(m) { return'<div class="empty-state"><div class="empty-icon">📭</div><p>'+m+'</p></div>'; }
+  const medals = ['🥇','🥈','🥉'];
+
+  /* ══ NPS FILIAIS ══ */
+  async function loadNpsF() {
+    const el = document.getElementById('nps-filiais-box');
+    el.innerHTML = '<div class="spinner nps-spin"></div>';
+    try {
+      const r = await fetch(API+'/api/reports/nps-filiais'+qp(), {headers:{Authorization:'Bearer '+tok()}});
+      const j = await r.json();
+      if(!r.ok||!j.success){el.innerHTML=errH(j.error||'Erro');return;}
+      const d = j.data||[];
+      if(!d.length){el.innerHTML=empH('Nenhum voto NPS encontrado.');return;}
+      el.innerHTML = d.map((f,fi)=>{
+        let tv=0,tp=0,tn=0,td=0,sm=0;
+        f.setores.forEach(s=>{tv+=s.total_votos;tp+=s.promotores;tn+=s.neutros;td+=s.detratores;sm+=s.media_nota*s.total_votos;});
+        const fnps=tv>0?Math.round(((tp-td)/tv)*100):0, fmed=tv>0?(sm/tv).toFixed(1):'—', cls=npsC(fnps);
+        const setoresHtml = f.setores.map(s=>{
+          const sc=npsC(s.nps_score);
+          return '<div class="setor-card"><div class="setor-card-header"><div><div class="setor-name">'+s.setor+'</div><div class="setor-meta">'+s.total_votos+' voto(s)</div></div>'
+            +'<div class="nps-circle '+sc+'" style="width:42px;height:42px;font-size:12px">'+s.nps_score+'</div></div>'
+            +'<div style="font-size:13px;margin-bottom:10px">⭐ <strong class="media-nota '+mC(s.media_nota)+'" style="font-size:15px">'+s.media_nota+'</strong></div>'
+            +'<div class="nps-bars">'
+            +'<div class="nps-bar-row"><span class="nps-bar-label">😊 Prom.</span><div class="nps-bar-track"><div class="nps-bar-fill prom" style="width:'+bp(s.promotores,s.total_votos)+'%"></div></div><span class="nps-bar-count">'+s.promotores+'</span></div>'
+            +'<div class="nps-bar-row"><span class="nps-bar-label">😐 Neutros</span><div class="nps-bar-track"><div class="nps-bar-fill neut" style="width:'+bp(s.neutros,s.total_votos)+'%"></div></div><span class="nps-bar-count">'+s.neutros+'</span></div>'
+            +'<div class="nps-bar-row"><span class="nps-bar-label">😞 Detr.</span><div class="nps-bar-track"><div class="nps-bar-fill detr" style="width:'+bp(s.detratores,s.total_votos)+'%"></div></div><span class="nps-bar-count">'+s.detratores+'</span></div>'
+            +'</div></div>';
+        }).join('');
+        return '<div class="filial-block" id="nf'+fi+'">'
+          +'<div class="filial-header" onclick="tog(\'nf'+fi+'\')">'
+          +'<div class="filial-header-left"><div class="filial-icon ni">🏢</div><div><div class="filial-name">'+f.filial+'</div><div class="filial-meta">'+f.setores.length+' setor(es) · '+tv+' votos</div></div></div>'
+          +'<div class="filial-header-right"><div class="stat-inline"><div class="stat-val media-nota '+mC(parseFloat(fmed))+'">⭐ '+fmed+'</div><div class="stat-lbl">Média notas</div></div>'
+          +'<div class="nps-circle '+cls+'">'+fnps+'</div>'+chv()+'</div></div>'
+          +'<div class="filial-body"><div class="setores-grid">'+setoresHtml+'</div></div></div>';
+      }).join('');
+    } catch(e){el.innerHTML=errH('Erro de conexão.');}
+  }
+
+  /* ══ NPS ATENDENTES ══ */
+  async function loadNpsA() {
+    const el = document.getElementById('nps-atendentes-box');
+    el.innerHTML = '<div class="spinner nps-spin"></div>';
+    try {
+      const r = await fetch(API+'/api/reports/nps-atendentes'+qp(), {headers:{Authorization:'Bearer '+tok()}});
+      const j = await r.json();
+      if(!r.ok||!j.success){el.innerHTML=errH(j.error||'Erro');return;}
+      const d = j.data||[];
+      if(!d.length){el.innerHTML=empH('Nenhum voto NPS encontrado.');return;}
+      el.innerHTML='<div class="ranking-table-wrap"><table class="rtable"><thead><tr>'
+        +'<th>Posição</th><th>Atendente</th><th>Filial</th><th>NPS</th><th>Média ⭐</th><th>Promotores</th><th>Neutros</th><th>Detratores</th><th>Votos</th>'
+        +'</tr></thead><tbody>'+d.map((r,i)=>'<tr>'
+          +'<td><div class="rank-pos"><span class="medal">'+(medals[i]||'')+'</span><span>#'+(i+1)+'</span></div></td>'
+          +'<td><div class="att-info"><span class="att-name">'+r.atendente+'</span><span class="att-sub">'+r.setor+'</span></div></td>'
+          +'<td style="color:var(--text-secondary)">'+r.filial+'</td>'
+          +'<td><div class="nps-circle '+npsC(r.nps_score)+'" style="width:42px;height:42px;font-size:12px">'+r.nps_score+'</div></td>'
+          +'<td><span class="media-nota '+mC(r.media_nota)+'" style="font-size:16px">⭐ '+r.media_nota+'</span></td>'
+          +'<td><span class="pill prom">😊 '+r.promotores+'</span></td>'
+          +'<td><span class="pill neut">😐 '+r.neutros+'</span></td>'
+          +'<td><span class="pill detr">😞 '+r.detratores+'</span></td>'
+          +'<td style="font-weight:700">'+r.total_votos+'</td></tr>').join('')
+        +'</tbody></table></div>';
+    } catch(e){el.innerHTML=errH('Erro de conexão.');}
+  }
+
+  /* ══ TEMPO FILIAIS ══ */
+  async function loadTeF() {
+    const el = document.getElementById('tempo-filiais-box');
+    el.innerHTML = '<div class="spinner tempo-spin"></div>';
+    try {
+      const r = await fetch(API+'/api/reports/tempo-espera-filiais'+qp(), {headers:{Authorization:'Bearer '+tok()}});
+      const j = await r.json();
+      if(!r.ok||!j.success){el.innerHTML=errH(j.error||'Erro');return;}
+      const d = j.data||[];
+      if(!d.length){el.innerHTML=empH('Nenhum registro encontrado.');return;}
+      const allSc = d.map(f=>f.score);
+      el.innerHTML = d.map((f,fi)=>{
+        const cls = scC(f.score,allSc);
+        const setSc = f.setores.map(s=>s.score);
+        const setoresHtml = f.setores.map(s=>{
+          const sc=scC(s.score,setSc);
+          return '<div class="setor-card"><div class="setor-card-header"><div><div class="setor-name">'+s.setor+'</div><div class="setor-meta">'+s.total_atendidos+' atendimento(s)</div></div>'
+            +'<div class="score-badge '+sc+'"><span class="sv">'+s.score+'</span><span class="sl">Score</span></div></div>'
+            +'<div class="tempo-row"><span class="tempo-label">⏳ Espera média</span><span class="tempo-value '+spC(s.avg_espera_seg)+'">'+fmtS(s.avg_espera_seg)+'</span></div>'
+            +'<div class="tempo-row"><span class="tempo-label">💬 Chat médio</span><span class="tempo-value '+spC(s.avg_chat_seg)+'">'+fmtS(s.avg_chat_seg)+'</span></div>'
+            +'<div class="tempo-row"><span class="tempo-label">⚡ Total médio</span><span class="tempo-value '+spC(s.avg_total_seg)+'">'+fmtS(s.avg_total_seg)+'</span></div>'
+            +'</div>';
+        }).join('');
+        return '<div class="filial-block" id="tf'+fi+'">'
+          +'<div class="filial-header" onclick="tog(\'tf'+fi+'\')">'
+          +'<div class="filial-header-left"><div class="filial-icon ti">🏢</div><div><div class="filial-name">'+f.filial+'</div><div class="filial-meta">'+f.setores.length+' setor(es) · '+f.total_atendidos+' atendimentos</div></div></div>'
+          +'<div class="filial-header-right">'
+          +'<div class="stat-inline"><div class="stat-val tempo-value '+spC(f.avg_espera_seg)+'">⏳ '+fmtS(f.avg_espera_seg)+'</div><div class="stat-lbl">Espera média</div></div>'
+          +'<div class="stat-inline"><div class="stat-val tempo-value '+spC(f.avg_chat_seg)+'">💬 '+fmtS(f.avg_chat_seg)+'</div><div class="stat-lbl">Chat médio</div></div>'
+          +'<div class="score-badge '+cls+'"><span class="sv">'+f.score+'</span><span class="sl">Score</span></div>'+chv()+'</div></div>'
+          +'<div class="filial-body"><div class="setores-grid">'+setoresHtml+'</div></div></div>';
+      }).join('');
+    } catch(e){el.innerHTML=errH('Erro de conexão.');}
+  }
+
+  /* ══ TEMPO ATENDENTES ══ */
+  async function loadTeA() {
+    const el = document.getElementById('tempo-atendentes-box');
+    el.innerHTML = '<div class="spinner tempo-spin"></div>';
+    try {
+      const r = await fetch(API+'/api/reports/tempo-espera-atendentes'+qp(), {headers:{Authorization:'Bearer '+tok()}});
+      const j = await r.json();
+      if(!r.ok||!j.success){el.innerHTML=errH(j.error||'Erro');return;}
+      const d = j.data||[];
+      if(!d.length){el.innerHTML=empH('Nenhum registro encontrado.');return;}
+      const allSc = d.map(r=>r.score);
+      el.innerHTML='<div class="ranking-table-wrap"><table class="rtable"><thead><tr>'
+        +'<th>Posição</th><th>Atendente</th><th>Filial</th><th>⏳ Espera Média</th><th>💬 Chat Médio</th><th>⚡ Total Médio</th><th>Atendimentos</th><th>Score</th>'
+        +'</tr></thead><tbody>'+d.map((r,i)=>'<tr>'
+          +'<td><div class="rank-pos"><span class="medal">'+(medals[i]||'')+'</span><span>#'+(i+1)+'</span></div></td>'
+          +'<td><div class="att-info"><span class="att-name">'+r.atendente+'</span><span class="att-sub">'+r.setor+'</span></div></td>'
+          +'<td style="color:var(--text-secondary)">'+r.filial+'</td>'
+          +'<td><span class="tempo-value '+spC(r.avg_espera_seg)+'">'+fmtS(r.avg_espera_seg)+'</span></td>'
+          +'<td><span class="tempo-value '+spC(r.avg_chat_seg)+'">'+fmtS(r.avg_chat_seg)+'</span></td>'
+          +'<td><span class="tempo-value '+spC(r.avg_total_seg)+'">'+fmtS(r.avg_total_seg)+'</span></td>'
+          +'<td style="font-weight:700">'+r.total_atendidos+'</td>'
+          +'<td><div class="score-badge '+scC(r.score,allSc)+'"><span class="sv">'+r.score+'</span><span class="sl">Score</span></div></td>'
+          +'</tr>').join('')
+        +'</tbody></table></div>';
+    } catch(e){el.innerHTML=errH('Erro de conexão.');}
+  }
+</script>
+</body>
+</html>

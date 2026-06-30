@@ -5009,7 +5009,7 @@ def index_page():
 
 @app.route('/<path:path>')
 def serve_frontend(path):
-    if path in ('index.html', 'dashboard.html', 'admin.html', 'reports.html', 'ranking.html', 'nps_dashboard.html', 'tempo_espera_dashboard.html'):
+    if path in ('index.html', 'dashboard.html', 'admin.html', 'reports.html', 'ranking.html', 'relatorio.html'):
         return send_from_directory(ROOT_DIR, path)
     if path.startswith('css/') or path.startswith('js/'):
         return send_from_directory(ROOT_DIR, path)
