@@ -4844,12 +4844,15 @@ def report_nps_atendentes():
         """)
         rows = db_sql.session.execute(sql, params).fetchall()
 
+        import math
         result = []
         for row in rows:
             total = row[3] or 0
             promotores = row[5] or 0
             detratores = row[7] or 0
             nps_score = round(((promotores - detratores) / total) * 100) if total > 0 else 0
+            # Pontuação combinada: equilibra NPS com volume de votos
+            combined_score = nps_score * math.log(total + 1)
             result.append({
                 'atendente': row[0] or '-',
                 'filial': row[1] or '-',
@@ -4859,9 +4862,11 @@ def report_nps_atendentes():
                 'promotores': promotores,
                 'neutros': row[6] or 0,
                 'detratores': detratores,
-                'nps_score': nps_score
+                'nps_score': nps_score,
+                'combined_score': round(combined_score, 1)
             })
-        result.sort(key=lambda x: -x['nps_score'])
+        # Ordena por pontuação combinada (NPS × log(votos+1))
+        result.sort(key=lambda x: -x['combined_score'])
         return jsonify({'success': True, 'data': result}), 200
     except Exception as e:
         import traceback
