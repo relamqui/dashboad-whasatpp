@@ -4740,19 +4740,19 @@ def report_nps_filiais():
         filters = ""
         params = {}
         if start_date:
-            filters += " AND criado_em >= :start_date"
+            filters += " AND data_voto >= :start_date"
             params['start_date'] = start_date
         if end_date:
-            filters += " AND criado_em <= :end_date"
+            filters += " AND data_voto <= :end_date"
             params['end_date'] = end_date + ' 23:59:59'
 
         sql = db_sql.text(f"""
             SELECT filial, setor, atendente,
                    COUNT(*) as total_votos,
-                   AVG(voto) as media_nota,
-                   SUM(CASE WHEN voto >= 9 THEN 1 ELSE 0 END) as promotores,
-                   SUM(CASE WHEN voto >= 7 AND voto <= 8 THEN 1 ELSE 0 END) as neutros,
-                   SUM(CASE WHEN voto <= 6 THEN 1 ELSE 0 END) as detratores
+                   AVG(CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER)) as media_nota,
+                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) >= 9 THEN 1 ELSE 0 END) as promotores,
+                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) >= 7 AND CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) <= 8 THEN 1 ELSE 0 END) as neutros,
+                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) <= 6 THEN 1 ELSE 0 END) as detratores
             FROM nps_votos
             WHERE 1=1 {filters}
             GROUP BY filial, setor, atendente
@@ -4824,19 +4824,19 @@ def report_nps_atendentes():
         filters = ""
         params = {}
         if start_date:
-            filters += " AND criado_em >= :start_date"
+            filters += " AND data_voto >= :start_date"
             params['start_date'] = start_date
         if end_date:
-            filters += " AND criado_em <= :end_date"
+            filters += " AND data_voto <= :end_date"
             params['end_date'] = end_date + ' 23:59:59'
 
         sql = db_sql.text(f"""
             SELECT atendente, filial, setor,
                    COUNT(*) as total_votos,
-                   AVG(voto) as media_nota,
-                   SUM(CASE WHEN voto >= 9 THEN 1 ELSE 0 END) as promotores,
-                   SUM(CASE WHEN voto >= 7 AND voto <= 8 THEN 1 ELSE 0 END) as neutros,
-                   SUM(CASE WHEN voto <= 6 THEN 1 ELSE 0 END) as detratores
+                   AVG(CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER)) as media_nota,
+                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) >= 9 THEN 1 ELSE 0 END) as promotores,
+                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) >= 7 AND CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) <= 8 THEN 1 ELSE 0 END) as neutros,
+                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) <= 6 THEN 1 ELSE 0 END) as detratores
             FROM nps_votos
             WHERE atendente IS NOT NULL AND atendente != '' {filters}
             GROUP BY atendente, filial, setor
