@@ -386,7 +386,9 @@
           return '<div class="setor-card"><div class="setor-card-header"><div><div class="setor-name">'+s.setor+'</div><div class="setor-meta">Total no período</div></div></div>'
             +'<div class="tempo-row"><span class="tempo-label">📥 Criados no dia</span><span class="tempo-value" style="color:var(--blue)">'+s.criados+'</span></div>'
             +'<div class="tempo-row"><span class="tempo-label">✅ Fechados no dia</span><span class="tempo-value" style="color:var(--green)">'+s.fechados+'</span></div>'
-            +'<div class="tempo-row"><span class="tempo-label">⏳ Abertos (agora)</span><span class="tempo-value" style="color:var(--yellow)">'+s.abertos+'</span></div>'
+            +'<div class="tempo-row"><span class="tempo-label">🤖 Em Triagem (Bot)</span><span class="tempo-value" style="color:var(--purple)">'+s.triagem+'</span></div>'
+            +'<div class="tempo-row"><span class="tempo-label">⏳ Em Espera (Fila)</span><span class="tempo-value" style="color:var(--yellow)">'+s.espera+'</span></div>'
+            +'<div class="tempo-row"><span class="tempo-label">🟢 Em Atendimento</span><span class="tempo-value" style="color:var(--green)">'+s.atendimento+'</span></div>'
             +'</div>';
         }).join('');
         return '<div class="filial-block" id="vf'+fi+'">'
@@ -395,7 +397,10 @@
           +'<div class="filial-header-right">'
           +'<div class="stat-inline"><div class="stat-val tempo-value" style="color:var(--blue)">📥 '+f.criados+'</div><div class="stat-lbl">Criados</div></div>'
           +'<div class="stat-inline"><div class="stat-val tempo-value" style="color:var(--green)">✅ '+f.fechados+'</div><div class="stat-lbl">Fechados</div></div>'
-          +'<div class="stat-inline"><div class="stat-val tempo-value" style="color:var(--yellow)">⏳ '+f.abertos+'</div><div class="stat-lbl">Abertos</div></div>'
+          +'<div class="stat-inline" style="border-left:1px solid rgba(255,255,255,.1); padding-left:15px; margin-left:5px;"></div>'
+          +'<div class="stat-inline"><div class="stat-val tempo-value" style="color:var(--purple)">🤖 '+f.triagem+'</div><div class="stat-lbl">Triagem</div></div>'
+          +'<div class="stat-inline"><div class="stat-val tempo-value" style="color:var(--yellow)">⏳ '+f.espera+'</div><div class="stat-lbl">Espera</div></div>'
+          +'<div class="stat-inline"><div class="stat-val tempo-value" style="color:var(--green)">🟢 '+f.atendimento+'</div><div class="stat-lbl">Atendimento</div></div>'
           +chv()+'</div></div>'
           +'<div class="filial-body"><div class="setores-grid">'+setoresHtml+'</div></div></div>';
       }).join('');
@@ -413,7 +418,7 @@
       const d = j.data||[];
       if(!d.length){el.innerHTML=empH('Nenhum registro encontrado.');return;}
       el.innerHTML='<div class="ranking-table-wrap"><table class="rtable"><thead><tr>'
-        +'<th>Posição</th><th>Atendente</th><th>Filial</th><th>📥 Criados no Dia</th><th>✅ Fechados no Dia</th><th>⏳ Abertos</th>'
+        +'<th>Posição</th><th>Atendente</th><th>Filial</th><th>📥 Criados no Dia</th><th>✅ Fechados no Dia</th><th>🟢 Em Atendimento (Agora)</th>'
         +'</tr></thead><tbody>'+d.map((r,i)=>'<tr>'
           +'<td><div class="rank-pos"><span class="medal">'+(medals[i]||'')+'</span><span>#'+(i+1)+'</span></div></td>'
           +'<td><div class="att-info"><span class="att-name">'+r.atendente+'</span><span class="att-sub">'+r.setor+'</span></div></td>'

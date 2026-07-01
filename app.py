@@ -5006,7 +5006,7 @@ def report_tempo_espera_filiais():
 @auth_required
 @admin_or_gestor_required
 def report_volume_chats_filiais():
-    """Volume de chats criados, fechados e abertos por filial/setor."""
+    """Volume de chats criados, fechados e abertos por filial/setor (categorizados por tags)."""
     try:
         start_date = request.args.get('start_date')
         end_date   = request.args.get('end_date')
@@ -5024,11 +5024,11 @@ def report_volume_chats_filiais():
         else:
             date_filters = "WHERE 1=1"
 
+        # Pega criados e fechados no periodo
         sql = db_sql.text(f"""
             SELECT setor_filial,
                    SUM(CASE WHEN inicio >= :start_date AND inicio <= :end_date THEN 1 ELSE 0 END) as criados,
-                   SUM(CASE WHEN finalizado >= :start_date AND finalizado <= :end_date THEN 1 ELSE 0 END) as fechados,
-                   SUM(CASE WHEN finalizado IS NULL THEN 1 ELSE 0 END) as abertos
+                   SUM(CASE WHEN finalizado >= :start_date AND finalizado <= :end_date THEN 1 ELSE 0 END) as fechados
             FROM tempo_espera
             {date_filters}
             GROUP BY setor_filial
@@ -5038,34 +5038,82 @@ def report_volume_chats_filiais():
         filiais = {}
         for row in rows:
             sf       = row[0] or '-'
-            if not sf or sf == '-':
-                continue
+            if not sf or sf == '-': continue
             criados  = int(row[1] or 0)
             fechados = int(row[2] or 0)
-            abertos  = int(row[3] or 0)
             
             partes = sf.split(':', 1) if ':' in sf else [sf, '-']
             setor  = partes[0].strip()
             filial = partes[1].strip() if len(partes) > 1 else '-'
             
             if filial not in filiais:
-                filiais[filial] = []
-            filiais[filial].append({
-                'setor': setor,
-                'criados': criados,
-                'fechados': fechados,
-                'abertos': abertos
-            })
+                filiais[filial] = {}
+            if setor not in filiais[filial]:
+                filiais[filial][setor] = {'criados': 0, 'fechados': 0, 'triagem': 0, 'espera': 0, 'atendimento': 0}
             
+            filiais[filial][setor]['criados'] += criados
+            filiais[filial][setor]['fechados'] += fechados
+
+        # Agora varre todos os abertos para classificar
+        sql_abertos = db_sql.text(f"""
+            SELECT numero_cliente, setor_filial
+            FROM tempo_espera
+            WHERE finalizado IS NULL
+        """)
+        abertos_rows = db_sql.session.execute(sql_abertos).fetchall()
+        
+        # Buscar todos os contacts para verificar tags em memoria (mais rapido)
+        phones_abertos = [r[0] for r in abertos_rows if r[0]]
+        contacts = Contact.query.filter(Contact.phone.in_(phones_abertos)).all() if phones_abertos else []
+        contact_tags_map = {c.phone: (c.tags or []) for c in contacts}
+
+        for row in abertos_rows:
+            phone = row[0]
+            sf = row[1] or '-'
+            if not sf or sf == '-': continue
+            
+            partes = sf.split(':', 1) if ':' in sf else [sf, '-']
+            setor  = partes[0].strip()
+            filial = partes[1].strip() if len(partes) > 1 else '-'
+            
+            if filial not in filiais:
+                filiais[filial] = {}
+            if setor not in filiais[filial]:
+                filiais[filial][setor] = {'criados': 0, 'fechados': 0, 'triagem': 0, 'espera': 0, 'atendimento': 0}
+            
+            tags = contact_tags_map.get(phone, [])
+            # Regras de varredura:
+            has_bot = any(str(t).strip().upper() == 'BOT' for t in tags)
+            has_att = any(str(t).strip().lower().startswith('atendente:') for t in tags)
+            
+            if has_bot:
+                filiais[filial][setor]['triagem'] += 1
+            elif has_att:
+                filiais[filial][setor]['atendimento'] += 1
+            else:
+                filiais[filial][setor]['espera'] += 1
+
         result = []
-        for filial, setores in filiais.items():
-            setores.sort(key=lambda x: -x['criados'])
+        for filial, setores_dict in filiais.items():
+            setores_list = []
+            for setor, stats in setores_dict.items():
+                setores_list.append({
+                    'setor': setor,
+                    'criados': stats['criados'],
+                    'fechados': stats['fechados'],
+                    'triagem': stats['triagem'],
+                    'espera': stats['espera'],
+                    'atendimento': stats['atendimento']
+                })
+            setores_list.sort(key=lambda x: -x['criados'])
             result.append({
                 'filial': filial,
-                'criados': sum(s['criados'] for s in setores),
-                'fechados': sum(s['fechados'] for s in setores),
-                'abertos': sum(s['abertos'] for s in setores),
-                'setores': setores
+                'criados': sum(s['criados'] for s in setores_list),
+                'fechados': sum(s['fechados'] for s in setores_list),
+                'triagem': sum(s['triagem'] for s in setores_list),
+                'espera': sum(s['espera'] for s in setores_list),
+                'atendimento': sum(s['atendimento'] for s in setores_list),
+                'setores': setores_list
             })
         result.sort(key=lambda x: -x['criados'])
         return jsonify({'success': True, 'data': result}), 200
