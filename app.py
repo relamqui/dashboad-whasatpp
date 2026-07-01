@@ -5002,6 +5002,137 @@ def report_tempo_espera_filiais():
         return jsonify({'success': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
 
 
+@app.route('/api/reports/volume-chats-filiais', methods=['GET'])
+@auth_required
+@admin_or_gestor_required
+def report_volume_chats_filiais():
+    """Volume de chats criados, fechados e abertos por filial/setor."""
+    try:
+        start_date = request.args.get('start_date')
+        end_date   = request.args.get('end_date')
+        
+        params = {}
+        date_filters = ""
+        if start_date and end_date:
+            params['start_date'] = start_date
+            params['end_date'] = end_date + ' 23:59:59'
+            date_filters = """
+                WHERE (inicio >= :start_date AND inicio <= :end_date)
+                   OR (finalizado >= :start_date AND finalizado <= :end_date)
+                   OR (finalizado IS NULL)
+            """
+        else:
+            date_filters = "WHERE 1=1"
+
+        sql = db_sql.text(f"""
+            SELECT setor_filial,
+                   SUM(CASE WHEN inicio >= :start_date AND inicio <= :end_date THEN 1 ELSE 0 END) as criados,
+                   SUM(CASE WHEN finalizado >= :start_date AND finalizado <= :end_date THEN 1 ELSE 0 END) as fechados,
+                   SUM(CASE WHEN finalizado IS NULL THEN 1 ELSE 0 END) as abertos
+            FROM tempo_espera
+            {date_filters}
+            GROUP BY setor_filial
+        """)
+        rows = db_sql.session.execute(sql, params).fetchall()
+
+        filiais = {}
+        for row in rows:
+            sf       = row[0] or '-'
+            if not sf or sf == '-':
+                continue
+            criados  = int(row[1] or 0)
+            fechados = int(row[2] or 0)
+            abertos  = int(row[3] or 0)
+            
+            partes = sf.split(':', 1) if ':' in sf else [sf, '-']
+            setor  = partes[0].strip()
+            filial = partes[1].strip() if len(partes) > 1 else '-'
+            
+            if filial not in filiais:
+                filiais[filial] = []
+            filiais[filial].append({
+                'setor': setor,
+                'criados': criados,
+                'fechados': fechados,
+                'abertos': abertos
+            })
+            
+        result = []
+        for filial, setores in filiais.items():
+            setores.sort(key=lambda x: -x['criados'])
+            result.append({
+                'filial': filial,
+                'criados': sum(s['criados'] for s in setores),
+                'fechados': sum(s['fechados'] for s in setores),
+                'abertos': sum(s['abertos'] for s in setores),
+                'setores': setores
+            })
+        result.sort(key=lambda x: -x['criados'])
+        return jsonify({'success': True, 'data': result}), 200
+    except Exception as e:
+        import traceback
+        return jsonify({'success': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
+
+
+@app.route('/api/reports/volume-chats-atendentes', methods=['GET'])
+@auth_required
+@admin_or_gestor_required
+def report_volume_chats_atendentes():
+    """Volume de chats criados, fechados e abertos por atendente."""
+    try:
+        start_date = request.args.get('start_date')
+        end_date   = request.args.get('end_date')
+        
+        params = {}
+        date_filters = ""
+        if start_date and end_date:
+            params['start_date'] = start_date
+            params['end_date'] = end_date + ' 23:59:59'
+            date_filters = """
+                AND ((inicio >= :start_date AND inicio <= :end_date)
+                   OR (finalizado >= :start_date AND finalizado <= :end_date)
+                   OR (finalizado IS NULL))
+            """
+
+        sql = db_sql.text(f"""
+            SELECT nome_atendente, setor_filial,
+                   SUM(CASE WHEN inicio >= :start_date AND inicio <= :end_date THEN 1 ELSE 0 END) as criados,
+                   SUM(CASE WHEN finalizado >= :start_date AND finalizado <= :end_date THEN 1 ELSE 0 END) as fechados,
+                   SUM(CASE WHEN finalizado IS NULL THEN 1 ELSE 0 END) as abertos
+            FROM tempo_espera
+            WHERE nome_atendente IS NOT NULL AND nome_atendente != '' {date_filters}
+            GROUP BY nome_atendente, setor_filial
+        """)
+        rows = db_sql.session.execute(sql, params).fetchall()
+
+        result = []
+        for row in rows:
+            nome     = row[0] or '-'
+            sf       = row[1] or '-'
+            criados  = int(row[2] or 0)
+            fechados = int(row[3] or 0)
+            abertos  = int(row[4] or 0)
+            
+            partes = sf.split(':', 1) if ':' in sf else [sf, '-']
+            setor  = partes[0].strip()
+            filial = partes[1].strip() if len(partes) > 1 else '-'
+            
+            result.append({
+                'atendente': nome,
+                'setor': setor,
+                'filial': filial,
+                'criados': criados,
+                'fechados': fechados,
+                'abertos': abertos
+            })
+            
+        result.sort(key=lambda x: -x['criados'])
+        return jsonify({'success': True, 'data': result}), 200
+    except Exception as e:
+        import traceback
+        return jsonify({'success': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
+
+
 @app.route('/')
 
 def index_page():

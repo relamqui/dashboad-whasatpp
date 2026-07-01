@@ -16,6 +16,7 @@
       --cyan:   #00c8e0;
       --yellow: #f5a623;
       --red:    #e74c3c;
+      --purple: #9b59b6;
     }
     body { height:auto; overflow:auto; background-color:var(--bg-app); color:var(--text-primary); font-family:'Inter',sans-serif; }
     .page-container { max-width:1400px; margin:0 auto; padding:32px 40px; }
@@ -36,6 +37,7 @@
     .main-tab-btn { padding:14px 28px; border:none; background:transparent; color:var(--text-secondary); font-size:15px; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif; border-bottom:3px solid transparent; margin-bottom:-2px; transition:color .2s,border-color .2s; }
     .main-tab-btn.nps.active    { color:var(--text-primary); border-bottom-color:var(--green); }
     .main-tab-btn.tempo.active  { color:var(--text-primary); border-bottom-color:var(--cyan); }
+    .main-tab-btn.volume.active { color:var(--text-primary); border-bottom-color:var(--purple); }
     .main-tab-content { display:none; }
     .main-tab-content.active { display:block; }
 
@@ -43,6 +45,7 @@
     .sub-tab-btn { padding:8px 20px; border-radius:9px; border:none; background:transparent; color:var(--text-secondary); font-size:13px; font-weight:500; cursor:pointer; font-family:'Inter',sans-serif; transition:all .2s; }
     .sub-tab-btn.active-nps   { background:linear-gradient(135deg,#00c896,#00a87a); color:white; font-weight:700; }
     .sub-tab-btn.active-tempo { background:linear-gradient(135deg,#00c8e0,#0098b0); color:white; font-weight:700; }
+    .sub-tab-btn.active-volume{ background:linear-gradient(135deg,#9b59b6,#8e44ad); color:white; font-weight:700; }
     .sub-tab-content { display:none; }
     .sub-tab-content.active { display:block; }
 
@@ -54,6 +57,7 @@
     .filial-icon { width:42px; height:42px; border-radius:11px; display:flex; align-items:center; justify-content:center; font-size:18px; }
     .filial-icon.ni { background:linear-gradient(135deg,rgba(0,200,150,.2),rgba(52,152,219,.2)); }
     .filial-icon.ti { background:linear-gradient(135deg,rgba(0,200,224,.2),rgba(52,152,219,.2)); }
+    .filial-icon.vi { background:linear-gradient(135deg,rgba(155,89,182,.2),rgba(52,152,219,.2)); }
     .filial-name { font-size:16px; font-weight:700; }
     .filial-meta { font-size:12px; color:var(--text-secondary); margin-top:2px; }
     .filial-header-right { display:flex; align-items:center; gap:18px; }
@@ -134,6 +138,7 @@
     .spinner::after { content:''; width:34px; height:34px; border:3px solid rgba(255,255,255,.08); border-radius:50%; animation:spin .8s linear infinite; }
     .spinner.nps-spin::after   { border-top-color:var(--green); }
     .spinner.tempo-spin::after { border-top-color:var(--cyan); }
+    .spinner.volume-spin::after{ border-top-color:var(--purple); }
     @keyframes spin { to { transform:rotate(360deg); } }
   </style>
 </head>
@@ -158,10 +163,10 @@
     </button>
   </div>
 
-  <!-- Abas Principais -->
   <div class="main-tabs">
     <button class="main-tab-btn nps active" id="main-tab-nps" onclick="switchMain('nps')">⭐ NPS de Satisfação</button>
     <button class="main-tab-btn tempo" id="main-tab-tempo" onclick="switchMain('tempo')">⏱️ Tempo de Espera</button>
+    <button class="main-tab-btn volume" id="main-tab-volume" onclick="switchMain('volume')">📈 Volume de Chats</button>
   </div>
 
   <!-- NPS -->
@@ -182,6 +187,16 @@
     </div>
     <div class="sub-tab-content active" id="tempo-content-filiais"><div id="tempo-filiais-box"><div class="spinner tempo-spin"></div></div></div>
     <div class="sub-tab-content" id="tempo-content-atendentes"><div id="tempo-atendentes-box"><div class="spinner tempo-spin"></div></div></div>
+  </div>
+
+  <!-- VOLUME -->
+  <div class="main-tab-content" id="main-content-volume">
+    <div class="sub-tabs">
+      <button class="sub-tab-btn active-volume" id="volume-sub-filiais" onclick="switchSub('volume','filiais')">🏢 Por Filial / Setor</button>
+      <button class="sub-tab-btn" id="volume-sub-atendentes" onclick="switchSub('volume','atendentes')">🧑‍💼 Ranking Atendentes</button>
+    </div>
+    <div class="sub-tab-content active" id="volume-content-filiais"><div id="volume-filiais-box"><div class="spinner volume-spin"></div></div></div>
+    <div class="sub-tab-content" id="volume-content-atendentes"><div id="volume-atendentes-box"><div class="spinner volume-spin"></div></div></div>
   </div>
 
 </div>
@@ -219,7 +234,7 @@
     return p.toString() ? '?'+p.toString() : '';
   }
 
-  function loadAll() { loadNpsF(); loadNpsA(); loadTeF(); loadTeA(); }
+  function loadAll() { loadNpsF(); loadNpsA(); loadTeF(); loadTeA(); loadVolF(); loadVolA(); }
 
   /* ── Helpers ── */
   function fmtS(s) { if(!s||s<=0) return '—'; s=Math.round(s); const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60; if(h>0)return h+'h '+m+'m'; if(m>0)return m+'m '+sc+'s'; return sc+'s'; }
@@ -351,6 +366,61 @@
           +'<td><span class="tempo-value '+spC(r.avg_total_seg)+'">'+fmtS(r.avg_total_seg)+'</span></td>'
           +'<td style="font-weight:700">'+r.total_atendidos+'</td>'
           +'<td><div class="score-badge '+scC(r.score,allSc)+'"><span class="sv">'+r.score+'</span><span class="sl">Score</span></div></td>'
+          +'</tr>').join('')
+        +'</tbody></table></div>';
+    } catch(e){el.innerHTML=errH('Erro de conexão.');}
+  }
+
+  /* ══ VOLUME FILIAIS ══ */
+  async function loadVolF() {
+    const el = document.getElementById('volume-filiais-box');
+    el.innerHTML = '<div class="spinner volume-spin"></div>';
+    try {
+      const r = await fetch(API+'/api/reports/volume-chats-filiais'+qp(), {headers:{Authorization:'Bearer '+tok()}});
+      const j = await r.json();
+      if(!r.ok||!j.success){el.innerHTML=errH(j.error||'Erro');return;}
+      const d = j.data||[];
+      if(!d.length){el.innerHTML=empH('Nenhum registro encontrado.');return;}
+      el.innerHTML = d.map((f,fi)=>{
+        const setoresHtml = f.setores.map(s=>{
+          return '<div class="setor-card"><div class="setor-card-header"><div><div class="setor-name">'+s.setor+'</div><div class="setor-meta">Total no período</div></div></div>'
+            +'<div class="tempo-row"><span class="tempo-label">📥 Criados no dia</span><span class="tempo-value" style="color:var(--blue)">'+s.criados+'</span></div>'
+            +'<div class="tempo-row"><span class="tempo-label">✅ Fechados no dia</span><span class="tempo-value" style="color:var(--green)">'+s.fechados+'</span></div>'
+            +'<div class="tempo-row"><span class="tempo-label">⏳ Abertos (agora)</span><span class="tempo-value" style="color:var(--yellow)">'+s.abertos+'</span></div>'
+            +'</div>';
+        }).join('');
+        return '<div class="filial-block" id="vf'+fi+'">'
+          +'<div class="filial-header" onclick="tog(\'vf'+fi+'\')">'
+          +'<div class="filial-header-left"><div class="filial-icon vi">🏢</div><div><div class="filial-name">'+f.filial+'</div><div class="filial-meta">'+f.setores.length+' setor(es)</div></div></div>'
+          +'<div class="filial-header-right">'
+          +'<div class="stat-inline"><div class="stat-val tempo-value" style="color:var(--blue)">📥 '+f.criados+'</div><div class="stat-lbl">Criados</div></div>'
+          +'<div class="stat-inline"><div class="stat-val tempo-value" style="color:var(--green)">✅ '+f.fechados+'</div><div class="stat-lbl">Fechados</div></div>'
+          +'<div class="stat-inline"><div class="stat-val tempo-value" style="color:var(--yellow)">⏳ '+f.abertos+'</div><div class="stat-lbl">Abertos</div></div>'
+          +chv()+'</div></div>'
+          +'<div class="filial-body"><div class="setores-grid">'+setoresHtml+'</div></div></div>';
+      }).join('');
+    } catch(e){el.innerHTML=errH('Erro de conexão.');}
+  }
+
+  /* ══ VOLUME ATENDENTES ══ */
+  async function loadVolA() {
+    const el = document.getElementById('volume-atendentes-box');
+    el.innerHTML = '<div class="spinner volume-spin"></div>';
+    try {
+      const r = await fetch(API+'/api/reports/volume-chats-atendentes'+qp(), {headers:{Authorization:'Bearer '+tok()}});
+      const j = await r.json();
+      if(!r.ok||!j.success){el.innerHTML=errH(j.error||'Erro');return;}
+      const d = j.data||[];
+      if(!d.length){el.innerHTML=empH('Nenhum registro encontrado.');return;}
+      el.innerHTML='<div class="ranking-table-wrap"><table class="rtable"><thead><tr>'
+        +'<th>Posição</th><th>Atendente</th><th>Filial</th><th>📥 Criados no Dia</th><th>✅ Fechados no Dia</th><th>⏳ Abertos</th>'
+        +'</tr></thead><tbody>'+d.map((r,i)=>'<tr>'
+          +'<td><div class="rank-pos"><span class="medal">'+(medals[i]||'')+'</span><span>#'+(i+1)+'</span></div></td>'
+          +'<td><div class="att-info"><span class="att-name">'+r.atendente+'</span><span class="att-sub">'+r.setor+'</span></div></td>'
+          +'<td style="color:var(--text-secondary)">'+r.filial+'</td>'
+          +'<td><span class="tempo-value" style="color:var(--blue)">'+r.criados+'</span></td>'
+          +'<td><span class="tempo-value" style="color:var(--green)">'+r.fechados+'</span></td>'
+          +'<td><span class="tempo-value" style="color:var(--yellow)">'+r.abertos+'</span></td>'
           +'</tr>').join('')
         +'</tbody></table></div>';
     } catch(e){el.innerHTML=errH('Erro de conexão.');}
