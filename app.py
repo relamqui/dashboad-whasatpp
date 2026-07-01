@@ -5226,32 +5226,35 @@ def report_volume_chats_atendentes():
         for row in rows:
             nome     = normalize_atendente_nome(row[0] or '-')
             criados  = int(row[2] or 0)
-            fechados = int(row[3] or 0)
+            # Fetching fechados from atendimentos_chat now instead of tempo_espera
             
             key = nome.lower()
             if key not in atendentes_map:
                 atendentes_map[key] = {'nome': nome, 'criados': 0, 'fechados': 0, 'abertos': 0}
             
             atendentes_map[key]['criados'] += criados
-            atendentes_map[key]['fechados'] += fechados
 
         # Agora pega a fila de ATENDIMENTO REAL usando a tabela atendimentos_chat
         sql_abertos = db_sql.text("""
-            SELECT atendente, COUNT(*) as qtd
+            SELECT atendente, 
+                   SUM(CASE WHEN LOWER(status) = 'atendente' THEN 1 ELSE 0 END) as abertos,
+                   SUM(CASE WHEN LOWER(status) = 'bot' THEN 1 ELSE 0 END) as fechados
             FROM atendimentos_chat
-            WHERE status = 'atendente' AND atendente IS NOT NULL AND atendente != ''
+            WHERE atendente IS NOT NULL AND atendente != ''
             GROUP BY atendente
         """)
         abertos_rows = db_sql.session.execute(sql_abertos).fetchall()
         for row in abertos_rows:
             nome = normalize_atendente_nome(row[0] or '-')
-            qtd = int(row[1] or 0)
+            qtd_abertos = int(row[1] or 0)
+            qtd_fechados = int(row[2] or 0)
             
             key = nome.lower()
             if key not in atendentes_map:
                 atendentes_map[key] = {'nome': nome, 'criados': 0, 'fechados': 0, 'abertos': 0}
                 
-            atendentes_map[key]['abertos'] += qtd
+            atendentes_map[key]['abertos'] = qtd_abertos
+            atendentes_map[key]['fechados'] = qtd_fechados
 
         result = []
         for key, data in atendentes_map.items():
