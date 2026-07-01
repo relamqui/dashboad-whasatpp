@@ -96,10 +96,9 @@ function renderUserProfile(user) {
 
   if (user.role === 'admin' || user.role === 'gestor') {
     document.getElementById('navAdmin').style.display = 'flex';
-    document.getElementById('navReports').style.display = 'flex';
   }
   if (user.role === 'admin') {
-    document.getElementById('navRanking').style.display = 'flex';
+    document.getElementById('navRelatorio').style.display = 'flex';
   }
   
   // O botão de transferência agora é controlado dentro do updateAttendanceBar
