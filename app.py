@@ -5190,9 +5190,10 @@ def report_volume_chats_atendentes():
         """)
         rows = db_sql.session.execute(sql, params).fetchall()
 
-        # Obter todos os usuarios para mapear email -> nome
+        # Obter todos os usuarios para mapear email -> nome e pegar setor/filial real do usuario
         users = User.query.all()
         email_to_name = {u.email.lower().strip(): u.name.strip() for u in users if u.email and u.name}
+        name_to_user = {u.name.lower().strip(): u for u in users if u.name}
 
         def normalize_atendente_nome(n):
             n_str = str(n).strip()
@@ -5205,42 +5206,39 @@ def report_volume_chats_atendentes():
         atendentes_map = {}
         for row in rows:
             nome     = normalize_atendente_nome(row[0] or '-')
-            sf       = row[1] or '-'
             criados  = int(row[2] or 0)
             fechados = int(row[3] or 0)
             
-            key = f"{nome}|{sf}"
+            key = nome.lower()
             if key not in atendentes_map:
-                atendentes_map[key] = {'nome': nome, 'sf': sf, 'criados': 0, 'fechados': 0, 'abertos': 0}
+                atendentes_map[key] = {'nome': nome, 'criados': 0, 'fechados': 0, 'abertos': 0}
             
             atendentes_map[key]['criados'] += criados
             atendentes_map[key]['fechados'] += fechados
 
         # Agora pega a fila de ATENDIMENTO REAL usando a tabela atendimentos_chat
         sql_abertos = db_sql.text("""
-            SELECT atendente, ultimo_setor, COUNT(*) as qtd
+            SELECT atendente, COUNT(*) as qtd
             FROM atendimentos_chat
             WHERE status = 'atendente' AND atendente IS NOT NULL AND atendente != ''
-            GROUP BY atendente, ultimo_setor
+            GROUP BY atendente
         """)
         abertos_rows = db_sql.session.execute(sql_abertos).fetchall()
         for row in abertos_rows:
             nome = normalize_atendente_nome(row[0] or '-')
-            sf = row[1] or '-'
-            qtd = int(row[2] or 0)
+            qtd = int(row[1] or 0)
             
-            key = f"{nome}|{sf}"
+            key = nome.lower()
             if key not in atendentes_map:
-                atendentes_map[key] = {'nome': nome, 'sf': sf, 'criados': 0, 'fechados': 0, 'abertos': 0}
+                atendentes_map[key] = {'nome': nome, 'criados': 0, 'fechados': 0, 'abertos': 0}
                 
             atendentes_map[key]['abertos'] += qtd
 
         result = []
         for key, data in atendentes_map.items():
-            sf = data['sf']
-            partes = sf.split(':', 1) if ':' in sf else [sf, '-']
-            setor  = partes[0].strip()
-            filial = partes[1].strip() if len(partes) > 1 else '-'
+            user_obj = name_to_user.get(key)
+            filial = user_obj.filial if user_obj and user_obj.filial else '-'
+            setor = user_obj.setor if user_obj and user_obj.setor else '-'
             
             result.append({
                 'atendente': data['nome'],
