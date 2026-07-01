@@ -5190,9 +5190,21 @@ def report_volume_chats_atendentes():
         """)
         rows = db_sql.session.execute(sql, params).fetchall()
 
+        # Obter todos os usuarios para mapear email -> nome
+        users = User.query.all()
+        email_to_name = {u.email.lower().strip(): u.name.strip() for u in users if u.email and u.name}
+
+        def normalize_atendente_nome(n):
+            n_str = str(n).strip()
+            if '@' in n_str:
+                n_lower = n_str.lower()
+                if n_lower in email_to_name:
+                    return email_to_name[n_lower]
+            return n_str
+
         atendentes_map = {}
         for row in rows:
-            nome     = row[0] or '-'
+            nome     = normalize_atendente_nome(row[0] or '-')
             sf       = row[1] or '-'
             criados  = int(row[2] or 0)
             fechados = int(row[3] or 0)
@@ -5213,7 +5225,7 @@ def report_volume_chats_atendentes():
         """)
         abertos_rows = db_sql.session.execute(sql_abertos).fetchall()
         for row in abertos_rows:
-            nome = row[0] or '-'
+            nome = normalize_atendente_nome(row[0] or '-')
             sf = row[1] or '-'
             qtd = int(row[2] or 0)
             
