@@ -5008,6 +5008,25 @@ def report_tempo_espera_filiais():
 def report_volume_chats_filiais():
     """Volume de chats criados, fechados e abertos por filial/setor (categorizados por tags)."""
     try:
+        filiais_objs = Filial.query.all()
+        valid_filiais = {f.name.lower().strip(): f.name.strip() for f in filiais_objs}
+        
+        def resolve_sf(sf_str):
+            if not sf_str or ':' not in sf_str:
+                return None, None
+            partes = sf_str.split(':', 1)
+            p0 = partes[0].strip()
+            p1 = partes[1].strip()
+            if not p0 or not p1 or p0 == '-' or p1 == '-' or p0.lower() == 'null' or p1.lower() == 'null':
+                return None, None
+            
+            if p0.lower() in valid_filiais:
+                return valid_filiais[p0.lower()], p1 # p0 = filial, p1 = setor
+            elif p1.lower() in valid_filiais:
+                return valid_filiais[p1.lower()], p0 # p1 = filial, p0 = setor
+            else:
+                return p0, p1 # Default assume p0 = filial
+
         start_date = request.args.get('start_date')
         end_date   = request.args.get('end_date')
         
@@ -5042,14 +5061,8 @@ def report_volume_chats_filiais():
             criados  = int(row[1] or 0)
             fechados = int(row[2] or 0)
             
-            if ':' not in sf: 
-                continue
-                
-            partes = sf.split(':', 1)
-            filial = partes[0].strip()
-            setor  = partes[1].strip()
-            
-            if not setor or not filial or setor == '-' or filial == '-' or setor.lower() == 'null' or filial.lower() == 'null':
+            filial, setor = resolve_sf(sf)
+            if not filial or not setor:
                 continue
             
             if filial not in filiais:
@@ -5073,14 +5086,8 @@ def report_volume_chats_filiais():
             if not sf or sf == '-': continue
             qtd = int(row[1] or 0)
             
-            if ':' not in sf:
-                continue
-                
-            partes = sf.split(':', 1)
-            filial = partes[0].strip()
-            setor  = partes[1].strip()
-            
-            if not setor or not filial or setor == '-' or filial == '-' or setor.lower() == 'null' or filial.lower() == 'null':
+            filial, setor = resolve_sf(sf)
+            if not filial or not setor:
                 continue
             
             if filial not in filiais: filiais[filial] = {}
@@ -5100,14 +5107,8 @@ def report_volume_chats_filiais():
             if not sf or sf == '-': continue
             qtd = int(row[1] or 0)
             
-            if ':' not in sf:
-                continue
-                
-            partes = sf.split(':', 1)
-            filial = partes[0].strip()
-            setor  = partes[1].strip()
-            
-            if not setor or not filial or setor == '-' or filial == '-' or setor.lower() == 'null' or filial.lower() == 'null':
+            filial, setor = resolve_sf(sf)
+            if not filial or not setor:
                 continue
             
             if filial not in filiais: filiais[filial] = {}
