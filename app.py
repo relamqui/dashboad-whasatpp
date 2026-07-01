@@ -5046,8 +5046,8 @@ def report_volume_chats_filiais():
                 continue
                 
             partes = sf.split(':', 1)
-            setor  = partes[0].strip()
-            filial = partes[1].strip()
+            filial = partes[0].strip()
+            setor  = partes[1].strip()
             
             if not setor or not filial or setor == '-' or filial == '-' or setor.lower() == 'null' or filial.lower() == 'null':
                 continue
@@ -5077,8 +5077,8 @@ def report_volume_chats_filiais():
                 continue
                 
             partes = sf.split(':', 1)
-            setor  = partes[0].strip()
-            filial = partes[1].strip()
+            filial = partes[0].strip()
+            setor  = partes[1].strip()
             
             if not setor or not filial or setor == '-' or filial == '-' or setor.lower() == 'null' or filial.lower() == 'null':
                 continue
@@ -5104,8 +5104,8 @@ def report_volume_chats_filiais():
                 continue
                 
             partes = sf.split(':', 1)
-            setor  = partes[0].strip()
-            filial = partes[1].strip()
+            filial = partes[0].strip()
+            setor  = partes[1].strip()
             
             if not setor or not filial or setor == '-' or filial == '-' or setor.lower() == 'null' or filial.lower() == 'null':
                 continue
