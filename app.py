@@ -5042,9 +5042,15 @@ def report_volume_chats_filiais():
             criados  = int(row[1] or 0)
             fechados = int(row[2] or 0)
             
-            partes = sf.split(':', 1) if ':' in sf else [sf, '-']
+            if ':' not in sf: 
+                continue
+                
+            partes = sf.split(':', 1)
             setor  = partes[0].strip()
-            filial = partes[1].strip() if len(partes) > 1 else '-'
+            filial = partes[1].strip()
+            
+            if not setor or not filial or setor == '-' or filial == '-' or setor.lower() == 'null' or filial.lower() == 'null':
+                continue
             
             if filial not in filiais:
                 filiais[filial] = {}
@@ -5067,9 +5073,15 @@ def report_volume_chats_filiais():
             if not sf or sf == '-': continue
             qtd = int(row[1] or 0)
             
-            partes = sf.split(':', 1) if ':' in sf else [sf, '-']
+            if ':' not in sf:
+                continue
+                
+            partes = sf.split(':', 1)
             setor  = partes[0].strip()
-            filial = partes[1].strip() if len(partes) > 1 else '-'
+            filial = partes[1].strip()
+            
+            if not setor or not filial or setor == '-' or filial == '-' or setor.lower() == 'null' or filial.lower() == 'null':
+                continue
             
             if filial not in filiais: filiais[filial] = {}
             if setor not in filiais[filial]: filiais[filial][setor] = {'criados': 0, 'fechados': 0, 'triagem': 0, 'espera': 0, 'atendimento': 0}
@@ -5088,9 +5100,15 @@ def report_volume_chats_filiais():
             if not sf or sf == '-': continue
             qtd = int(row[1] or 0)
             
-            partes = sf.split(':', 1) if ':' in sf else [sf, '-']
+            if ':' not in sf:
+                continue
+                
+            partes = sf.split(':', 1)
             setor  = partes[0].strip()
-            filial = partes[1].strip() if len(partes) > 1 else '-'
+            filial = partes[1].strip()
+            
+            if not setor or not filial or setor == '-' or filial == '-' or setor.lower() == 'null' or filial.lower() == 'null':
+                continue
             
             if filial not in filiais: filiais[filial] = {}
             if setor not in filiais[filial]: filiais[filial][setor] = {'criados': 0, 'fechados': 0, 'triagem': 0, 'espera': 0, 'atendimento': 0}
