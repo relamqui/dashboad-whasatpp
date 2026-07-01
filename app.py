@@ -5249,7 +5249,7 @@ def report_volume_chats_atendentes():
                 'abertos': data['abertos']
             })
             
-        result.sort(key=lambda x: -x['criados'])
+        result.sort(key=lambda x: (-x['abertos'], -x['criados'], -x['fechados']))
         return jsonify({'success': True, 'data': result}), 200
     except Exception as e:
         import traceback
