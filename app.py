@@ -4750,9 +4750,9 @@ def report_nps_filiais():
             SELECT filial, setor, atendente,
                    COUNT(*) as total_votos,
                    AVG(CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER)) as media_nota,
-                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) = 5 THEN 1 ELSE 0 END) as promotores,
-                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) = 4 THEN 1 ELSE 0 END) as neutros,
-                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) <= 3 THEN 1 ELSE 0 END) as detratores
+                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) >= 9 THEN 1 ELSE 0 END) as promotores,
+                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) IN (7, 8) THEN 1 ELSE 0 END) as neutros,
+                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) <= 6 THEN 1 ELSE 0 END) as detratores
             FROM nps_votos
             WHERE 1=1 {filters}
             GROUP BY filial, setor, atendente
@@ -4834,9 +4834,9 @@ def report_nps_atendentes():
             SELECT atendente, filial, setor,
                    COUNT(*) as total_votos,
                    AVG(CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER)) as media_nota,
-                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) = 5 THEN 1 ELSE 0 END) as promotores,
-                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) = 4 THEN 1 ELSE 0 END) as neutros,
-                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) <= 3 THEN 1 ELSE 0 END) as detratores
+                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) >= 9 THEN 1 ELSE 0 END) as promotores,
+                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) IN (7, 8) THEN 1 ELSE 0 END) as neutros,
+                   SUM(CASE WHEN CAST(SPLIT_PART(voto, ' ', 1) AS INTEGER) <= 6 THEN 1 ELSE 0 END) as detratores
             FROM nps_votos
             WHERE atendente IS NOT NULL AND atendente != '' {filters}
             GROUP BY atendente, filial, setor

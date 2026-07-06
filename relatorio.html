@@ -325,7 +325,7 @@
         +'<th>Cliente</th><th>Voto</th><th>Comentário</th><th>Atendente</th><th>Filial</th><th>Setor</th><th>Ação</th>'
         +'</tr></thead><tbody>'+d.map((r,i)=>'<tr>'
           +'<td style="font-weight:600">'+r.cliente+'</td>'
-          +'<td><div class="pill '+(parseInt(r.voto)>=8?'prom':(parseInt(r.voto)<=6?'detr':'neut'))+'">⭐ '+r.voto+'</div></td>'
+          +'<td><div class="pill '+(parseInt(r.voto)>=9?'prom':(parseInt(r.voto)<=6?'detr':'neut'))+'">⭐ '+r.voto+'</div></td>'
           +'<td style="max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="'+r.comentario+'">'+(r.comentario||'-')+'</td>'
           +'<td>'+r.atendente+'</td>'
           +'<td>'+r.filial+'</td>'
