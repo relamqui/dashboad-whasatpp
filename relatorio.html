@@ -251,6 +251,15 @@
   function loadAll() { loadNpsF(); loadNpsA(); loadNpsR(); loadTeF(); loadTeA(); loadTeE(); loadVolF(); loadVolA(); }
 
   /* ── Helpers ── */
+  function fmtD(dStr) {
+    if(!dStr || dStr==='-') return '-';
+    try {
+      const p = dStr.split(' ');
+      const dp = p[0].split('-');
+      const tp = p[1].split('.')[0].split(':');
+      return dp[2]+'/'+dp[1]+'/'+dp[0]+' - '+tp[0]+':'+tp[1];
+    } catch(e) { return dStr; }
+  }
   function fmtS(s) { if(!s||s<=0) return '—'; s=Math.round(s); const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60; if(h>0)return h+'h '+m+'m'; if(m>0)return m+'m '+sc+'s'; return sc+'s'; }
   function spC(s) { if(!s||s<=0)return''; if(s<120)return'fast'; if(s<600)return'medium'; return'slow'; }
   function scC(s,a) { const mx=Math.max(...a),p=mx>0?s/mx:0; if(p>=.75)return'top'; if(p>=.5)return'mid'; if(p>=.25)return'low'; return'bot'; }
@@ -446,7 +455,7 @@
               <tbody>
                 ${att.atendimentos.map(r => `<tr>
                   <td style="font-weight:600">${r.cliente}</td>
-                  <td>${r.data}</td>
+                  <td>${fmtD(r.data)}</td>
                   <td><span class="tempo-value ${spC(r.espera_seg)}">${fmtS(r.espera_seg)}</span></td>
                   <td><span class="tempo-value ${spC(r.chat_seg)}">${fmtS(r.chat_seg)}</span></td>
                   <td>${r.setor_filial}</td>
