@@ -140,6 +140,16 @@
     .spinner.tempo-spin::after { border-top-color:var(--cyan); }
     .spinner.volume-spin::after{ border-top-color:var(--purple); }
     @keyframes spin { to { transform:rotate(360deg); } }
+
+    details.accordion-item { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+    summary.accordion-header { padding:16px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; list-style:none; }
+    summary.accordion-header::-webkit-details-marker { display:none; }
+    .acc-title-flex { display:flex; align-items:center; gap:12px; }
+    .acc-icon { font-size:20px; }
+    .acc-name { font-weight:600; font-size:15px; color:var(--text-primary); }
+    .acc-badge { background:rgba(255,255,255,0.05); padding:4px 10px; border-radius:12px; font-size:12px; color:var(--text-secondary); }
+    details[open] summary .chevron { transform:rotate(180deg); }
+    .accordion-body { border-top:1px solid var(--border); padding:0; background:rgba(0,0,0,0.15); }
   </style>
 </head>
 <body>
@@ -186,9 +196,11 @@
     <div class="sub-tabs">
       <button class="sub-tab-btn active-tempo" id="tempo-sub-filiais" onclick="switchSub('tempo','filiais')">🏢 Por Filial / Setor</button>
       <button class="sub-tab-btn" id="tempo-sub-atendentes" onclick="switchSub('tempo','atendentes')">🧑‍💼 Ranking Atendentes</button>
+      <button class="sub-tab-btn" id="tempo-sub-extrato" onclick="switchSub('tempo','extrato')">📑 Extrato de Atendentes</button>
     </div>
     <div class="sub-tab-content active" id="tempo-content-filiais"><div id="tempo-filiais-box"><div class="spinner tempo-spin"></div></div></div>
     <div class="sub-tab-content" id="tempo-content-atendentes"><div id="tempo-atendentes-box"><div class="spinner tempo-spin"></div></div></div>
+    <div class="sub-tab-content" id="tempo-content-extrato"><div id="tempo-extrato-box"><div class="spinner tempo-spin"></div></div></div>
   </div>
 
   <!-- VOLUME -->
@@ -236,7 +248,7 @@
     return p.toString() ? '?'+p.toString() : '';
   }
 
-  function loadAll() { loadNpsF(); loadNpsA(); loadNpsR(); loadTeF(); loadTeA(); loadVolF(); loadVolA(); }
+  function loadAll() { loadNpsF(); loadNpsA(); loadNpsR(); loadTeF(); loadTeA(); loadTeE(); loadVolF(); loadVolA(); }
 
   /* ── Helpers ── */
   function fmtS(s) { if(!s||s<=0) return '—'; s=Math.round(s); const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60; if(h>0)return h+'h '+m+'m'; if(m>0)return m+'m '+sc+'s'; return sc+'s'; }
@@ -395,6 +407,58 @@
           +'<td><div class="score-badge '+scC(r.score,allSc)+'"><span class="sv">'+r.score+'</span><span class="sl">Score</span></div></td>'
           +'</tr>').join('')
         +'</tbody></table></div>';
+    } catch(e){el.innerHTML=errH('Erro de conexão.');}
+  }
+
+  async function loadTeE() {
+    const el = document.getElementById('tempo-extrato-box');
+    el.innerHTML = '<div class="spinner tempo-spin"></div>';
+    try {
+      const r = await fetch(API+'/api/reports/tempo-espera-extrato'+qp(), {headers:{Authorization:'Bearer '+tok()}});
+      const j = await r.json();
+      if(!r.ok||!j.success){el.innerHTML=errH(j.error||'Erro');return;}
+      const d = j.data||[];
+      if(!d.length){el.innerHTML=empH('Nenhum registro encontrado.');return;}
+      
+      let html = '<div class="accordion-list">';
+      d.forEach((att, idx) => {
+        html += `<details class="accordion-item">
+          <summary class="accordion-header">
+            <div class="acc-title-flex">
+              <span class="acc-icon">🧑‍💼</span>
+              <span class="acc-name">${att.atendente}</span>
+              <span class="acc-badge">${att.atendimentos.length} atendimentos</span>
+            </div>
+            ${chv()}
+          </summary>
+          <div class="accordion-body" style="overflow-x:auto;">
+            <table class="rtable">
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Data/Hora</th>
+                  <th>Espera</th>
+                  <th>Chat</th>
+                  <th>Setor/Filial</th>
+                  <th>Ação</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${att.atendimentos.map(r => `<tr>
+                  <td style="font-weight:600">${r.cliente}</td>
+                  <td>${r.data}</td>
+                  <td><span class="tempo-value ${spC(r.espera_seg)}">${fmtS(r.espera_seg)}</span></td>
+                  <td><span class="tempo-value ${spC(r.chat_seg)}">${fmtS(r.chat_seg)}</span></td>
+                  <td>${r.setor_filial}</td>
+                  <td><a href="dashboard.html?phone=${r.cliente.replace(/\D/g,'')}" target="_blank" style="display:inline-block; padding:6px 12px; background:var(--bg-card); border:1px solid var(--border); color:var(--text-primary); text-decoration:none; border-radius:6px; font-size:0.85rem; transition:0.2s;">💬 Ir para conversa</a></td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </details>`;
+      });
+      html += '</div>';
+      el.innerHTML = html;
     } catch(e){el.innerHTML=errH('Erro de conexão.');}
   }
 

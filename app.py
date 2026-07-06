@@ -4981,6 +4981,60 @@ def report_tempo_espera_atendentes():
         return jsonify({'success': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
 
 
+@app.route('/api/reports/tempo-espera-extrato', methods=['GET'])
+@auth_required
+@admin_or_gestor_required
+def report_tempo_espera_extrato():
+    """Extrato detalhado de atendimentos agrupados por atendente."""
+    try:
+        start_date = request.args.get('start_date')
+        end_date   = request.args.get('end_date')
+        filters = "AND atendido IS NOT NULL AND nome_atendente IS NOT NULL AND nome_atendente != ''"
+        params  = {}
+        if start_date:
+            filters += " AND inicio >= :start_date"
+            params['start_date'] = start_date
+        if end_date:
+            filters += " AND inicio <= :end_date"
+            params['end_date'] = end_date + ' 23:59:59'
+
+        # Busca todos os atendimentos
+        sql = db_sql.text(f"""
+            SELECT nome_atendente, numero_cliente, inicio,
+                   {_segundos_espera_sql()} as espera_seg,
+                   (CASE WHEN finalizado IS NOT NULL THEN {_segundos_chat_sql()} ELSE NULL END) as chat_seg,
+                   setor_filial
+            FROM tempo_espera WHERE 1=1 {filters}
+            ORDER BY nome_atendente, inicio DESC
+        """)
+        rows = db_sql.session.execute(sql, params).fetchall()
+        
+        # Agrupa no backend para facilitar pro frontend
+        atendentes_map = {}
+        for row in rows:
+            nome = row[0] or 'Desconhecido'
+            if nome not in atendentes_map:
+                atendentes_map[nome] = []
+                
+            atendentes_map[nome].append({
+                'cliente': row[1] or '-',
+                'data': str(row[2]) if row[2] else '-',
+                'espera_seg': float(row[3] or 0),
+                'chat_seg': float(row[4] or 0) if row[4] is not None else None,
+                'setor_filial': row[5] or '-'
+            })
+            
+        # Converte para lista
+        result = [{'atendente': nome, 'atendimentos': atendimentos} for nome, atendimentos in atendentes_map.items()]
+        # Ordena pela quantidade de atendimentos
+        result.sort(key=lambda x: len(x['atendimentos']), reverse=True)
+
+        return jsonify({'success': True, 'data': result}), 200
+    except Exception as e:
+        import traceback
+        return jsonify({'success': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
+
+
 @app.route('/api/reports/tempo-espera-filiais', methods=['GET'])
 @auth_required
 @admin_or_gestor_required
