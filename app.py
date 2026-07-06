@@ -4892,38 +4892,13 @@ def report_nps_respostas():
             params['end_date'] = end_date + ' 23:59:59'
 
         sql = db_sql.text(f"""
-            SELECT COALESCE(numero, telefone, numero_cliente, 'Desconhecido') as cliente, 
+            SELECT numero_cliente as cliente, 
                    voto, comentario, atendente, filial, setor, data_voto
             FROM nps_votos
             WHERE 1=1 {filters}
             ORDER BY data_voto DESC
         """)
-        
-        # Como não temos certeza do nome da coluna do número, tentamos algumas variações.
-        # Caso o banco acuse erro de coluna inexistente, uma dessas pode não existir.
-        # Para evitar erros fatais se as colunas não existirem, vamos tentar uma query mais segura:
-        # Mas em SQL puro, COALESCE falha se a coluna não existe. 
-        # Vamos usar um bloco try/except interno para tentar descobrir a coluna certa ou usar uma query básica.
-        
-        try:
-            # Primeiro tentamos com 'numero' (padrão em muitas tabelas) e 'comentario' (a nova)
-            sql = db_sql.text(f"""
-                SELECT numero as cliente, voto, comentario, atendente, filial, setor, data_voto
-                FROM nps_votos
-                WHERE 1=1 {filters}
-                ORDER BY data_voto DESC
-            """)
-            rows = db_sql.session.execute(sql, params).fetchall()
-        except Exception as query_err:
-            db_sql.session.rollback()
-            # Fallback se 'numero' não existir, tenta 'telefone' e se 'comentario' não existir, omite.
-            sql = db_sql.text(f"""
-                SELECT telefone as cliente, voto, NULL as comentario, atendente, filial, setor, data_voto
-                FROM nps_votos
-                WHERE 1=1 {filters}
-                ORDER BY data_voto DESC
-            """)
-            rows = db_sql.session.execute(sql, params).fetchall()
+        rows = db_sql.session.execute(sql, params).fetchall()
 
         result = []
         for row in rows:
