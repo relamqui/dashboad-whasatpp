@@ -4873,6 +4873,76 @@ def report_nps_atendentes():
         return jsonify({'success': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
 
 
+@app.route('/api/reports/nps-respostas', methods=['GET'])
+@auth_required
+@admin_or_gestor_required
+def report_nps_respostas():
+    """Retorna a lista de votos individuais do NPS."""
+    try:
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+
+        filters = ""
+        params = {}
+        if start_date:
+            filters += " AND data_voto >= :start_date"
+            params['start_date'] = start_date
+        if end_date:
+            filters += " AND data_voto <= :end_date"
+            params['end_date'] = end_date + ' 23:59:59'
+
+        sql = db_sql.text(f"""
+            SELECT COALESCE(numero, telefone, numero_cliente, 'Desconhecido') as cliente, 
+                   voto, comentario, atendente, filial, setor, data_voto
+            FROM nps_votos
+            WHERE 1=1 {filters}
+            ORDER BY data_voto DESC
+        """)
+        
+        # Como não temos certeza do nome da coluna do número, tentamos algumas variações.
+        # Caso o banco acuse erro de coluna inexistente, uma dessas pode não existir.
+        # Para evitar erros fatais se as colunas não existirem, vamos tentar uma query mais segura:
+        # Mas em SQL puro, COALESCE falha se a coluna não existe. 
+        # Vamos usar um bloco try/except interno para tentar descobrir a coluna certa ou usar uma query básica.
+        
+        try:
+            # Primeiro tentamos com 'numero' (padrão em muitas tabelas) e 'comentario' (a nova)
+            sql = db_sql.text(f"""
+                SELECT numero as cliente, voto, comentario, atendente, filial, setor, data_voto
+                FROM nps_votos
+                WHERE 1=1 {filters}
+                ORDER BY data_voto DESC
+            """)
+            rows = db_sql.session.execute(sql, params).fetchall()
+        except Exception as query_err:
+            db_sql.session.rollback()
+            # Fallback se 'numero' não existir, tenta 'telefone' e se 'comentario' não existir, omite.
+            sql = db_sql.text(f"""
+                SELECT telefone as cliente, voto, NULL as comentario, atendente, filial, setor, data_voto
+                FROM nps_votos
+                WHERE 1=1 {filters}
+                ORDER BY data_voto DESC
+            """)
+            rows = db_sql.session.execute(sql, params).fetchall()
+
+        result = []
+        for row in rows:
+            result.append({
+                'cliente': row[0] or '-',
+                'voto': row[1] or '-',
+                'comentario': row[2] or '',
+                'atendente': row[3] or '-',
+                'filial': row[4] or '-',
+                'setor': row[5] or '-',
+                'data_voto': str(row[6]) if row[6] else '-'
+            })
+        
+        return jsonify({'success': True, 'data': result}), 200
+    except Exception as e:
+        import traceback
+        return jsonify({'success': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
+
+
 def _segundos_espera_sql():
     return "EXTRACT(EPOCH FROM (atendido - inicio))"
 

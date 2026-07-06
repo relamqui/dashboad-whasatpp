@@ -80,6 +80,20 @@ window.onload = async () => {
     setTimeout(() => { overlay.style.display = 'none'; }, 360);
   }
 
+  // ── Verificar se há número na URL para abrir automaticamente ──
+  const urlParams = new URLSearchParams(window.location.search);
+  const phoneToOpen = urlParams.get('phone');
+  if (phoneToOpen && CONTACTS) {
+    // Procura o contato pelo telefone
+    const contactToOpen = CONTACTS.find(c => c.phone === phoneToOpen || c.phone.includes(phoneToOpen));
+    if (contactToOpen) {
+      setTimeout(() => openChat(contactToOpen.id), 500);
+    } else {
+      // Se não encontrou, talvez possa mostrar no console ou preencher a busca
+      console.log('Contato não encontrado para o número:', phoneToOpen);
+    }
+  }
+
   // Para usuarios nao-admin, recarregar contatos periodicamente
   if (user.role !== 'admin') {
     setInterval(async () => {

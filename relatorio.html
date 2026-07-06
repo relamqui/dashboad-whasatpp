@@ -174,9 +174,11 @@
     <div class="sub-tabs">
       <button class="sub-tab-btn active-nps" id="nps-sub-filiais" onclick="switchSub('nps','filiais')">🏢 Por Filial / Setor</button>
       <button class="sub-tab-btn" id="nps-sub-atendentes" onclick="switchSub('nps','atendentes')">🧑‍💼 Ranking Atendentes</button>
+      <button class="sub-tab-btn" id="nps-sub-respostas" onclick="switchSub('nps','respostas')">💬 Respostas dos Clientes</button>
     </div>
     <div class="sub-tab-content active" id="nps-content-filiais"><div id="nps-filiais-box"><div class="spinner nps-spin"></div></div></div>
     <div class="sub-tab-content" id="nps-content-atendentes"><div id="nps-atendentes-box"><div class="spinner nps-spin"></div></div></div>
+    <div class="sub-tab-content" id="nps-content-respostas"><div id="nps-respostas-box"><div class="spinner nps-spin"></div></div></div>
   </div>
 
   <!-- TEMPO -->
@@ -234,7 +236,7 @@
     return p.toString() ? '?'+p.toString() : '';
   }
 
-  function loadAll() { loadNpsF(); loadNpsA(); loadTeF(); loadTeA(); loadVolF(); loadVolA(); }
+  function loadAll() { loadNpsF(); loadNpsA(); loadNpsR(); loadTeF(); loadTeA(); loadVolF(); loadVolA(); }
 
   /* ── Helpers ── */
   function fmtS(s) { if(!s||s<=0) return '—'; s=Math.round(s); const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60; if(h>0)return h+'h '+m+'m'; if(m>0)return m+'m '+sc+'s'; return sc+'s'; }
@@ -305,6 +307,31 @@
           +'<td><span class="pill neut">😐 '+r.neutros+'</span></td>'
           +'<td><span class="pill detr">😞 '+r.detratores+'</span></td>'
           +'<td style="font-weight:700">'+r.total_votos+'</td></tr>').join('')
+        +'</tbody></table></div>';
+    } catch(e){el.innerHTML=errH('Erro de conexão.');}
+  }
+
+  /* ══ NPS RESPOSTAS DOS CLIENTES ══ */
+  async function loadNpsR() {
+    const el = document.getElementById('nps-respostas-box');
+    el.innerHTML = '<div class="spinner nps-spin"></div>';
+    try {
+      const r = await fetch(API+'/api/reports/nps-respostas'+qp(), {headers:{Authorization:'Bearer '+tok()}});
+      const j = await r.json();
+      if(!r.ok||!j.success){el.innerHTML=errH(j.error||'Erro');return;}
+      const d = j.data||[];
+      if(!d.length){el.innerHTML=empH('Nenhuma resposta encontrada.');return;}
+      el.innerHTML='<div class="ranking-table-wrap"><table class="rtable"><thead><tr>'
+        +'<th>Cliente</th><th>Voto</th><th>Comentário</th><th>Atendente</th><th>Filial</th><th>Setor</th><th>Ação</th>'
+        +'</tr></thead><tbody>'+d.map((r,i)=>'<tr>'
+          +'<td style="font-weight:600">'+r.cliente+'</td>'
+          +'<td><div class="pill '+(parseInt(r.voto)>=8?'prom':(parseInt(r.voto)<=6?'detr':'neut'))+'">⭐ '+r.voto+'</div></td>'
+          +'<td style="max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="'+r.comentario+'">'+(r.comentario||'-')+'</td>'
+          +'<td>'+r.atendente+'</td>'
+          +'<td>'+r.filial+'</td>'
+          +'<td>'+r.setor+'</td>'
+          +'<td><button class="btn-filter" style="padding:6px 12px; font-size:12px;" onclick="window.open(\'dashboard.html?phone='+r.cliente+'\', \'_blank\')">💬 Ir para conversa</button></td>'
+          +'</tr>').join('')
         +'</tbody></table></div>';
     } catch(e){el.innerHTML=errH('Erro de conexão.');}
   }
