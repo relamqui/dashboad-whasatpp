@@ -1,7 +1,8 @@
 .env
 data/
-db.json
-wpcrm.db
+*.db
+*.sqlite
+*.json
 __pycache__/
 *.pyc
 *.pyo

@@ -126,7 +126,22 @@ function renderUserProfile(user) {
   }
 }
 
-async function loadContacts() {
+// ── Debounce para loadContacts (evitar múltiplas chamadas simultâneas) ─────
+let _loadContactsTimer = null;
+
+function loadContacts() {
+  // Retorna uma promise que resolve quando a chamada debounced finalmente executar
+  return new Promise((resolve) => {
+    if (_loadContactsTimer) clearTimeout(_loadContactsTimer);
+    _loadContactsTimer = setTimeout(async () => {
+      _loadContactsTimer = null;
+      await _loadContactsInner();
+      resolve();
+    }, 300); // 300ms debounce
+  });
+}
+
+async function _loadContactsInner() {
   const token = localStorage.getItem('wp_crm_token');
   try {
     const res = await fetch(`${API_URL}/api/contacts`, {
@@ -232,7 +247,9 @@ function initSocket(token) {
         window.location.reload();
       } else {
         console.log('Reconexão de rede detectada (sem reinício do servidor). Ressincronizando chats silenciosamente...');
-        loadContacts();
+        loadContacts().then(() => {
+          renderChatList(getFilteredContacts());
+        });
       }
     });
 
@@ -313,12 +330,24 @@ function initSocket(token) {
         renderTagFilter();
         console.log('[Socket] Tags atualizadas para:', contact.id, data.tags);
       } else {
-        // Contato não está na lista local — pode ser um chat transferido para mim
-        // Verifica se alguma das novas tags é do meu setor para forçar reload
+        // Contato não está na lista local — pode ser um chat novo/transferido
         const userData = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
-        if (userData.role !== 'admin' && userData.filial && userData.setor) {
+        const newTags = data.tags || [];
+
+        // Admin: sempre recarregar para garantir visibilidade de qualquer chat
+        if (userData.role === 'admin') {
+          console.log('[Socket] Admin: chat novo detectado, recarregando:', data.id);
+          loadContacts().then(() => {
+            renderTagFilter();
+            renderChatList(getFilteredContacts());
+          });
+          return;
+        }
+
+        if (userData.filial && userData.setor) {
+          // Atendente: verificar se tem a tag exata filial:setor
           const myTag = `${userData.filial}:${userData.setor}`;
-          if (data.tags && data.tags.includes(myTag)) {
+          if (newTags.includes(myTag)) {
             console.log('[Socket] Chat transferido para meu setor detectado, recarregando contatos:', data.id);
             loadContacts().then(() => {
               renderTagFilter();
@@ -327,8 +356,12 @@ function initSocket(token) {
             return;
           }
         } else if (userData.role === 'gestor' && userData.filial) {
-          const newTags = data.tags || [];
-          const hasMyFilial = newTags.some(t => typeof t === 'string' && t.includes(':') && !t.toLowerCase().startsWith('atendente:') && t.split(':')[0] === userData.filial);
+          // Gestor: verificar se tem qualquer tag da sua filial
+          const hasMyFilial = newTags.some(t =>
+            typeof t === 'string' && t.includes(':') &&
+            !t.toLowerCase().startsWith('atendente:') &&
+            t.split(':')[0] === userData.filial
+          );
           if (hasMyFilial) {
             console.log('[Socket] Chat transferido para minha filial (gestor), recarregando:', data.id);
             loadContacts().then(() => {
@@ -514,12 +547,14 @@ function handleIncomingWebhook(data) {
     let type = fromMe ? 'out' : 'in';
 
     if (!contact) {
-      // Para usuários não-admin, só exibir contatos que já foram carregados
-      // do servidor (com filtro de filial/setor). Novos contatos via socket
-      // serão vistos após o próximo reload de contatos.
+      // Para usuários não-admin, não podemos garantir a visibilidade do lead até o servidor validar tags
       const userData = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
       if (userData.role !== 'admin') {
-        console.log('[Socket] Contato novo ignorado (filtro de filial/setor):', phone, instName);
+        console.log('[Socket] Contato novo não encontrado, agendando recarregamento:', phone, instName);
+        loadContacts().then(() => {
+          renderTagFilter();
+          renderChatList(getFilteredContacts());
+        });
         return;
       }
       // instName já declarado acima (linha 308), reutilizar
@@ -2151,12 +2186,14 @@ function handleChatAssignment(data) {
     renderChatList(getFilteredContacts());
   } else {
     // Contato não está na lista local — pode ser um chat transferido para mim
-    // Verifica se as tags indicam que é do meu setor/filial
     const userData = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
     const tags = data.tags || [];
     let shouldReload = false;
     
-    if (userData.role === 'user' && userData.filial && userData.setor) {
+    // Admin: sempre recarregar para ver qualquer chat novo
+    if (userData.role === 'admin') {
+      shouldReload = true;
+    } else if (userData.filial && userData.setor) {
       const myTag = `${userData.filial}:${userData.setor}`;
       if (tags.includes(myTag)) shouldReload = true;
     } else if (userData.role === 'gestor' && userData.filial) {

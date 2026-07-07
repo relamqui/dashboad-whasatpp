@@ -61,6 +61,7 @@ print(f"[INIT] SocketIO async_mode={_async_mode}")
 
 JWT_SECRET = os.getenv('JWT_SECRET', 'secret')
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+PUBLIC_DIR = os.path.join(ROOT_DIR, 'public')
 
 # Identificador único de inicialização para forçar refresh nos clientes quando o backend for atualizado/reiniciado
 SERVER_BOOT_ID = str(uuid.uuid4())
@@ -810,50 +811,90 @@ def add_bot_tag():
     if not data:
         return jsonify({'error': 'Body vazio'}), 400
         
-    phone = data.get('phone')
+    phone_raw = data.get('phone')
     inst = data.get('instance')
     filial = data.get('filial')
     setor = data.get('setor')
     custom_tag = data.get('tag')
     
-    if not phone or not inst:
+    if not phone_raw or not inst:
         return jsonify({'error': 'phone e instance são obrigatórios'}), 400
         
     if custom_tag and ':' in custom_tag and not (filial and setor):
         partes = custom_tag.split(':', 1)
         filial = partes[0].strip()
         setor = partes[1].strip()
-        
-    phone = normalize_br_phone(str(phone).strip())
+
+    # ── Normalização e log do número recebido ──────────────────────────────────
+    phone = normalize_br_phone(str(phone_raw).strip())
     inst = str(inst).strip()
     contact_id = f"c_{phone}_{inst}"
-    
-    print(f"[BOT/TAGS] Buscando contato: id={contact_id}, phone={phone}, instance={inst}")
-    
-    # Tentativa 1: busca pelo ID exato
+    print(f"[BOT/TAGS] phone recebido='{phone_raw}' → normalizado='{phone}', instance='{inst}'")
+    print(f"[BOT/TAGS] Buscando contato: id={contact_id}")
+
+    # ── Gerar variante do número (com/sem dígito 9 extra BR) ──────────────────
+    # O webhook pode ter gravado o número com 13 dígitos (5511912345678)
+    # enquanto o bot envia com 12 (551112345678) ou vice-versa.
+    phone_variant = None
+    digits_only = "".join(filter(str.isdigit, str(phone_raw).strip().split('@')[0]))
+    if len(digits_only) == 13 and digits_only.startswith('55') and digits_only[4] == '9':
+        # Número completo com 9 → gerar variante sem o 9
+        phone_variant = digits_only[:4] + digits_only[5:]  # remove o 9
+    elif len(digits_only) == 12 and digits_only.startswith('55'):
+        # Número sem 9 → gerar variante com o 9
+        phone_variant = digits_only[:4] + '9' + digits_only[4:]
+
+    # ── Tentativa 1: busca pelo ID exato ──────────────────────────────────────
     contact = Contact.query.filter_by(id=contact_id).first()
     
-    # Tentativa 2: busca pelo phone + instance (caso o ID tenha alguma diferença)
+    # ── Tentativa 2: busca pelo phone normalizado + instance ─────────────────
     if not contact:
         contact = Contact.query.filter_by(phone=phone, instance=inst).first()
         if contact:
             print(f"[BOT/TAGS] Encontrado por phone+instance: {contact.id}")
     
-    # Tentativa 3: busca apenas pelo phone (pega o mais recente)
+    # ── Tentativa 3: busca apenas pelo phone normalizado ─────────────────────
     if not contact:
         contact = Contact.query.filter_by(phone=phone).first()
         if contact:
             print(f"[BOT/TAGS] Encontrado apenas por phone: {contact.id} (instance no banco: {contact.instance})")
-    
+
+    # ── Tentativa 4: busca pela variante do número (9 extra BR) ──────────────
+    if not contact and phone_variant:
+        contact = Contact.query.filter_by(phone=phone_variant, instance=inst).first()
+        if not contact:
+            contact = Contact.query.filter_by(phone=phone_variant).first()
+        if contact:
+            print(f"[BOT/TAGS] Encontrado pela variante do número: {contact.id} (phone_variant={phone_variant})")
+
+    # ── Tentativa 5: busca pelos últimos 8 dígitos (fallback tolerante) ───────
+    if not contact and len(phone) >= 8:
+        suffix = phone[-8:]
+        all_contacts = Contact.query.filter(
+            Contact.instance == inst
+        ).all()
+        for c in all_contacts:
+            if c.phone and c.phone.endswith(suffix):
+                contact = c
+                print(f"[BOT/TAGS] Encontrado por sufixo '{suffix}': {contact.id} (phone no banco: {contact.phone})")
+                break
+
     if not contact:
         print(f"[BOT/TAGS] Contato não encontrado, criando novo: {contact_id}")
-        contact = Contact(
-            id=contact_id, name=phone, phone=phone,
-            avatar=phone[0] if phone else "?", instance=inst,
-            tags=['Novo Lead'], last_msg='', last_msg_time='', unread=0
-        )
-        db_sql.session.add(contact)
-        db_sql.session.flush()
+        try:
+            contact = Contact(
+                id=contact_id, name=phone, phone=phone,
+                avatar=phone[0] if phone else "?", instance=inst,
+                tags=['Novo Lead'], last_msg='', last_msg_time='', unread=0
+            )
+            db_sql.session.add(contact)
+            db_sql.session.flush()
+        except Exception as e_create:
+            db_sql.session.rollback()
+            print(f"[BOT/TAGS] Erro ao criar contato: {e_create}")
+            return jsonify({'error': f'Falha ao criar contato: {str(e_create)}'}), 500
+
+    print(f"[BOT/TAGS] Contato resolvido: id={contact.id}, phone_banco={contact.phone}")
         
     current_tags = list(contact.tags or [])
     added = False
@@ -887,25 +928,36 @@ def add_bot_tag():
     if custom_tag and custom_tag not in current_tags:
         current_tags.append(custom_tag)
         added = True
-        
-    if added:
-        contact.tags = current_tags
-        flag_modified(contact, 'tags')
-        db_sql.session.commit()
-        print(f"[BOT/TAGS] Tags atualizadas para '{contact.id}': {contact.tags}")
+
+    # ── Persistir tags se houve alteração ────────────────────────────────────
+    try:
+        if added:
+            contact.tags = current_tags
+            flag_modified(contact, 'tags')
+            db_sql.session.commit()
+            print(f"[BOT/TAGS] Tags salvas com sucesso para '{contact.id}': {contact.tags}")
+        else:
+            print(f"[BOT/TAGS] Nenhuma tag nova (filial={filial}, setor={setor}, tag={custom_tag}). Tags atuais: {current_tags}")
+
+        # ── Emitir socket SEMPRE — garante resync mesmo em retentativas do bot ─
         _inst_room = contact.instance or 'unknown'
+        _current_tags_list = list(contact.tags or [])
         socketio.emit('chat_tags_updated', {
             'id': contact.id,
-            'tags': list(contact.tags)
+            'tags': _current_tags_list
         }, room=f'instance_{_inst_room}')
         socketio.emit('chat_tags_updated', {
             'id': contact.id,
-            'tags': list(contact.tags)
+            'tags': _current_tags_list
         }, room='admin')
-    else:
-        print(f"[BOT/TAGS] Nenhuma tag alterada (filial={filial}, setor={setor}, tag={custom_tag})")
+        print(f"[BOT/TAGS] Socket emitido para room=instance_{_inst_room} e room=admin")
 
-    # Monitoramento de tempo de espera — sempre verifica, independente de tags terem mudado
+    except Exception as e_tags:
+        db_sql.session.rollback()
+        print(f"[BOT/TAGS] ERRO ao salvar tags: {e_tags}")
+        return jsonify({'error': f'Falha ao salvar tags: {str(e_tags)}'}), 500
+
+    # ── Monitoramento de tempo de espera ─────────────────────────────────────
     try:
         espera_aberta = TempoEspera.query.filter_by(numero_cliente=phone, atendido=None).first()
         if not espera_aberta:
@@ -917,7 +969,7 @@ def add_bot_tag():
         db_sql.session.rollback()
         print(f"[TEMPO_ESPERA] Erro ao registrar inicio: {e_te}")
         
-    return jsonify({'success': True, 'contact_id': contact.id, 'tags': contact.tags}), 200
+    return jsonify({'success': True, 'contact_id': contact.id, 'tags': list(contact.tags or []), 'phone_normalizado': phone}), 200
 
 # ─── Webhooks WAHA API ────────────────────────────────────────────────────────────
 
@@ -1524,12 +1576,19 @@ def auto_assign_chat_to_sender(contact, user_data):
         db_sql.session.add(atend)
 
     # Dispara evento socket para atualizar interface
+    _inst_room = contact.instance or 'unknown'
     socketio.emit('chat_assignment', {
         'contact_id': contact.id,
         'assigned_to': user_data.get('id'),
         'assigned_name': user_email,
         'tags': tags
-    })
+    }, room=f'instance_{_inst_room}')
+    socketio.emit('chat_assignment', {
+        'contact_id': contact.id,
+        'assigned_to': user_data.get('id'),
+        'assigned_name': user_email,
+        'tags': tags
+    }, room='admin')
 
 @app.route('/api/whatsapp/send', methods=['POST'])
 @auth_required
@@ -3306,12 +3365,18 @@ def create_contact():
     except Exception as e:
         print(f"Erro webhook atendimento (assign novo chat): {e}")
 
-    socketio.emit('chat_assigned', {
+    socketio.emit('chat_assignment', {
         'contact_id': contact.id,
         'assigned_to': user.id,
         'assigned_name': user.name,
         'tags': contact.tags
-    })
+    }, room=f"instance_{contact.instance or 'unknown'}")
+    socketio.emit('chat_assignment', {
+        'contact_id': contact.id,
+        'assigned_to': user.id,
+        'assigned_name': user.name,
+        'tags': contact.tags
+    }, room='admin')
 
     return jsonify({
         'id': contact.id,
@@ -5380,15 +5445,20 @@ def report_volume_chats_atendentes():
 @app.route('/')
 
 def index_page():
-    return send_from_directory(ROOT_DIR, 'index.html')
+    return send_from_directory(PUBLIC_DIR, 'index.html')
 
 @app.route('/<path:path>')
 def serve_frontend(path):
     if path in ('index.html', 'dashboard.html', 'admin.html', 'reports.html', 'ranking.html', 'relatorio.html'):
-        return send_from_directory(ROOT_DIR, path)
+        return send_from_directory(PUBLIC_DIR, path)
     if path.startswith('css/') or path.startswith('js/'):
-        return send_from_directory(ROOT_DIR, path)
+        return send_from_directory(PUBLIC_DIR, path)
     if path.lower().endswith(('.png', '.jpg', '.jpeg', '.svg', '.ico', '.webp')):
+        # Logo is in root or public? I should allow serving from ROOT_DIR for images that were not moved.
+        # But wait, I only moved html, js, css. Images weren't moved!
+        # Let's check if there are images in root.
+        if os.path.exists(os.path.join(PUBLIC_DIR, path)):
+            return send_from_directory(PUBLIC_DIR, path)
         return send_from_directory(ROOT_DIR, path)
     return jsonify({'error': 'Not found'}), 404
 
