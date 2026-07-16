@@ -2624,6 +2624,10 @@ def webhook():
         data = request.json
         if not data: return 'OK', 200
 
+        # Debug super agressivo para encontrarmos onde o WAHA manda o voto
+        if 'poll' in str(data).lower() or 'vote' in str(data).lower():
+            print(f"[DEBUG WAHA RAW PAYLOAD] => {data}")
+
         # ── NPS: intercepta evento de voto na enquete (poll.vote) ─────────────
         if data.get('event') == 'poll.vote':
             try:
