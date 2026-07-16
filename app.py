@@ -2683,10 +2683,37 @@ def webhook():
                             timeout=10
                         )
                     else:
-                        print(f"[NPS] Nenhuma sessão NPS 'waiting_vote' encontrada para {_vote_phone}")
+                        _debug_msg = f"DEBUG NPS: Nenhuma sessão 'waiting_vote' encontrada para o número {_vote_phone} (Voto: {_selected}). Tente verificar se o número no banco bate."
+                        print(f"[NPS] {_debug_msg}")
+                        requests.post(
+                            f"{WAHA_API_URL}/api/sendText",
+                            headers=get_waha_headers(),
+                            json={
+                                "chatId": f"{_vote_phone}@c.us",
+                                "text": _debug_msg,
+                                "session": _vote_session
+                            },
+                            timeout=5
+                        )
             except Exception as _nps_vote_err:
                 db_sql.session.rollback()
-                print(f"[NPS] Erro ao processar poll.vote: {_nps_vote_err}")
+                _debug_msg = f"DEBUG NPS: Erro interno ao processar poll.vote: {str(_nps_vote_err)}"
+                print(f"[NPS] {_debug_msg}")
+                try:
+                    # Tenta enviar erro pro número que veio no poll, se existir
+                    _err_phone = data.get('payload', {}).get('vote', {}).get('from', '').split('@')[0]
+                    if _err_phone:
+                        requests.post(
+                            f"{WAHA_API_URL}/api/sendText",
+                            headers=get_waha_headers(),
+                            json={
+                                "chatId": f"{_err_phone}@c.us",
+                                "text": _debug_msg,
+                                "session": data.get('session', 'corpal')
+                            },
+                            timeout=5
+                        )
+                except: pass
             return 'OK', 200
         # ─────────────────────────────────────────────────────────────────────
 
