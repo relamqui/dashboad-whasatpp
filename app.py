@@ -2548,13 +2548,19 @@ def wait_time_monitor_loop():
                                 print(f"[NPS] Timeout para {_n.numero} após {int(_elapsed)}s — NPS encerrado.")
                                 # Avisa o cliente
                                 try:
-                                    _contact_nps = Contact.query.filter_by(phone=_n.numero).first()
+                                    _contact_nps = Contact.query.filter(
+                                        db_sql.or_(
+                                            Contact.phone == _n.numero,
+                                            Contact.phone.like(f"%{_n.numero}%")
+                                        )
+                                    ).first()
                                     _inst_nps = (_contact_nps.instance if _contact_nps else None) or "corpal"
+                                    _clean_num = normalize_phone(_n.numero)
                                     requests.post(
                                         f"{WAHA_API_URL}/api/sendText",
                                         headers=get_waha_headers(),
                                         json={
-                                            "chatId": f"{_n.numero}@c.us",
+                                            "chatId": f"{_clean_num}@c.us",
                                             "text": "Sua pesquisa de satisfação foi encerrada por inatividade. Obrigado pela sua participação! 😊",
                                             "session": _inst_nps
                                         },
@@ -2630,8 +2636,12 @@ def webhook():
                 _selected   = (_vote_info.get('selectedOptions') or [''])[0]
                 print(f"[NPS] poll.vote recebido de {_vote_phone} — opção: {_selected!r}")
                 if _selected:  # ignora votos vazios (desvoto no WhatsApp)
-                    atend_nps = AtendimentoChat.query.filter_by(
-                        numero=_vote_phone, nps_status='waiting_vote'
+                    atend_nps = AtendimentoChat.query.filter(
+                        db_sql.or_(
+                            AtendimentoChat.numero == _vote_phone,
+                            AtendimentoChat.numero.like(f"%{_vote_phone}%")
+                        ),
+                        AtendimentoChat.nps_status == 'waiting_vote'
                     ).first()
                     if atend_nps:
                         atend_nps.nps_voto   = _selected
@@ -2745,8 +2755,12 @@ def webhook():
             # ── NPS: intercepta motivo do cliente (mensagem de texto após voto) ──
             if not fromMe and msg_type == 'chat' and body:
                 _nps_phone = normalize_phone(raw_jid)
-                _atend_nps_motivo = AtendimentoChat.query.filter_by(
-                    numero=_nps_phone, nps_status='waiting_reason'
+                _atend_nps_motivo = AtendimentoChat.query.filter(
+                    db_sql.or_(
+                        AtendimentoChat.numero == _nps_phone,
+                        AtendimentoChat.numero.like(f"%{_nps_phone}%")
+                    ),
+                    AtendimentoChat.nps_status == 'waiting_reason'
                 ).first()
                 if _atend_nps_motivo:
                     try:
