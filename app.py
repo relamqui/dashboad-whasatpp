@@ -2651,9 +2651,9 @@ def webhook():
                         if resp_lid.status_code == 200:
                             lid_data = resp_lid.json()
                             print(f"[NPS] API LID converteu {_vote_from} para: {lid_data}")
-                            _jid_converted = lid_data.get('jid', '') or lid_data.get('phoneNumber', '')
-                            if _jid_converted:
-                                _vote_from = _jid_converted
+                            _pn = lid_data.get('pn', '')
+                            if _pn:
+                                _vote_from = _pn
                     except Exception as _e_lid:
                         print(f"[NPS] Erro na api/lids: {_e_lid}")
 
