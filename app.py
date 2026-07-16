@@ -5242,7 +5242,7 @@ def report_nps_respostas():
 
         sql = db_sql.text(f"""
             SELECT numero_cliente as cliente, 
-                   voto, comentario, atendente, filial, setor, data_voto
+                   voto, COALESCE(motivo, comentario) as comentario, atendente, filial, setor, data_voto
             FROM nps_votos
             WHERE 1=1 {filters}
             ORDER BY data_voto DESC
