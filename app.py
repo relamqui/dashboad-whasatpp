@@ -2639,6 +2639,24 @@ def webhook():
                 _vote_info    = _vote_payload.get('vote', {})
                 _vote_from    = _vote_info.get('from', '')
                 _vote_session = data.get('session', 'corpal')
+                
+                # Converte LID para numero principal se necessario
+                if '@lid' in _vote_from:
+                    try:
+                        resp_lid = requests.get(
+                            f"{WAHA_API_URL}/api/{_vote_session}/lids/{_vote_from}",
+                            headers=get_waha_headers(),
+                            timeout=5
+                        )
+                        if resp_lid.status_code == 200:
+                            lid_data = resp_lid.json()
+                            print(f"[NPS] API LID converteu {_vote_from} para: {lid_data}")
+                            _jid_converted = lid_data.get('jid', '') or lid_data.get('phoneNumber', '')
+                            if _jid_converted:
+                                _vote_from = _jid_converted
+                    except Exception as _e_lid:
+                        print(f"[NPS] Erro na api/lids: {_e_lid}")
+
                 _vote_phone   = normalize_phone(_vote_from)
                 _selected     = (_vote_info.get('selectedOptions') or [''])[0]
                 
