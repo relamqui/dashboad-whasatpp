@@ -228,6 +228,12 @@ class AtendimentoChat(db_sql.Model):
     alerta_40min_enviado = db_sql.Column(db_sql.Boolean, default=False, nullable=False, server_default='false')
     # Timestamp ISO de quando o status mudou para 'atendente' (início da espera)
     atendente_desde = db_sql.Column(db_sql.Text, nullable=True)
+    # ── Campos de controle do fluxo NPS ──────────────────────────────────────
+    # None | 'waiting_vote' | 'waiting_reason' | 'finished'
+    nps_status     = db_sql.Column(db_sql.String(30), nullable=True)
+    nps_poll_id    = db_sql.Column(db_sql.String(255), nullable=True)
+    nps_started_at = db_sql.Column(db_sql.Text, nullable=True)
+    nps_voto       = db_sql.Column(db_sql.String(50), nullable=True)
 
 class SlaHistory(db_sql.Model):
     __tablename__ = 'sla_history'
@@ -271,7 +277,27 @@ class MediaFile(db_sql.Model):
     storage_url = db_sql.Column(db_sql.Text, nullable=True)  # URL pública no MinIO
     created_at = db_sql.Column(db_sql.Text, nullable=False)
 
+class NpsVoto(db_sql.Model):
+    """Histórico de votos e motivos da pesquisa de satisfação NPS."""
+    __tablename__ = 'nps_votos'
+    id             = db_sql.Column(db_sql.Integer, primary_key=True, autoincrement=True)
+    numero_cliente = db_sql.Column(db_sql.Text, nullable=True)
+    atendente      = db_sql.Column(db_sql.String(100), nullable=True)
+    filial         = db_sql.Column(db_sql.String(100), nullable=True)
+    setor          = db_sql.Column(db_sql.String(100), nullable=True)
+    voto           = db_sql.Column(db_sql.String(50), nullable=True)
+    motivo         = db_sql.Column(db_sql.Text, nullable=True)
+    data_voto      = db_sql.Column(db_sql.Text, nullable=True)
+
 # ─── Utils ──────────────────────────────────────────────────────────────────
+def normalize_phone(raw: str) -> str:
+    """Remove sufixos do WhatsApp (@lid, @c.us, @s.whatsapp.net) e o 9 extra de celulares BR."""
+    import re
+    phone = str(raw or '').replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@lid', '')
+    phone = ''.join(filter(str.isdigit, phone))
+    phone = re.sub(r'^(\d{4})9(\d{8})$', r'\1\2', phone)
+    return phone
+
 def normalize_br_phone(phone_str):
     if not phone_str: return ""
     p = str(phone_str)
@@ -2489,9 +2515,64 @@ def wait_time_monitor_loop():
 
                     except Exception as e_reg:
                         print(f"[MONITOR] Erro ao processar registro {reg.numero}: {e_reg}")
+
+                # ── NPS: timeout de 5 minutos ─────────────────────────────────────
+                try:
+                    agora_nps = get_now()
+                    nps_pendentes = AtendimentoChat.query.filter(
+                        AtendimentoChat.nps_status.in_(['waiting_vote', 'waiting_reason'])
+                    ).all()
+                    for _n in nps_pendentes:
+                        if not _n.nps_started_at:
+                            continue
+                        try:
+                            _inicio_nps = datetime.datetime.fromisoformat(_n.nps_started_at)
+                            if _inicio_nps.tzinfo is None:
+                                _inicio_nps = pytz.timezone('America/Sao_Paulo').localize(_inicio_nps)
+                            _elapsed = (agora_nps - _inicio_nps).total_seconds()
+                            if _elapsed >= 300:  # 5 minutos
+                                # Salva no histórico caso já tenha voto mas não motivo
+                                if _n.nps_voto:
+                                    _timeout_voto = NpsVoto(
+                                        numero_cliente = _n.numero,
+                                        atendente      = _n.ultimo_atendente,
+                                        filial         = None,
+                                        setor          = _n.ultimo_setor,
+                                        voto           = _n.nps_voto,
+                                        motivo         = None,
+                                        data_voto      = agora_nps.isoformat()
+                                    )
+                                    db_sql.session.add(_timeout_voto)
+                                _n.nps_status = 'finished'
+                                db_sql.session.commit()
+                                print(f"[NPS] Timeout para {_n.numero} após {int(_elapsed)}s — NPS encerrado.")
+                                # Avisa o cliente
+                                try:
+                                    _contact_nps = Contact.query.filter_by(phone=_n.numero).first()
+                                    _inst_nps = (_contact_nps.instance if _contact_nps else None) or "corpal"
+                                    requests.post(
+                                        f"{WAHA_API_URL}/api/sendText",
+                                        headers=get_waha_headers(),
+                                        json={
+                                            "chatId": f"{_n.numero}@c.us",
+                                            "text": "Sua pesquisa de satisfação foi encerrada por inatividade. Obrigado pela sua participação! 😊",
+                                            "session": _inst_nps
+                                        },
+                                        timeout=5
+                                    )
+                                except Exception:
+                                    pass
+                        except Exception as _nps_te:
+                            db_sql.session.rollback()
+                            print(f"[NPS] Erro ao processar timeout para {_n.numero}: {_nps_te}")
+                except Exception as _nps_loop_e:
+                    print(f"[NPS] Erro no loop de timeout: {_nps_loop_e}")
+                # ─────────────────────────────────────────────────────────────────
+
         except Exception as e_loop:
             print(f"[MONITOR] Erro no loop de monitoramento: {e_loop}")
         time.sleep(60)  # Verifica a cada 60 segundos
+
 
 def start_wait_time_monitor():
     """Inicia a thread de monitoramento de tempo de espera em background."""
@@ -2536,11 +2617,75 @@ def webhook():
     try:
         data = request.json
         if not data: return 'OK', 200
+
+        # ── NPS: intercepta evento de voto na enquete (poll.vote) ─────────────
+        if data.get('event') == 'poll.vote':
+            try:
+                _vote_payload = data.get('payload', {})
+                _vote_info    = _vote_payload.get('vote', {})
+                _vote_from    = _vote_info.get('from', '')
+                _vote_session = data.get('session', 'corpal')
+                # Normaliza o número (remove @lid, @c.us e 9 extra BR)
+                _vote_phone = normalize_phone(_vote_from)
+                _selected   = (_vote_info.get('selectedOptions') or [''])[0]
+                print(f"[NPS] poll.vote recebido de {_vote_phone} — opção: {_selected!r}")
+                if _selected:  # ignora votos vazios (desvoto no WhatsApp)
+                    atend_nps = AtendimentoChat.query.filter_by(
+                        numero=_vote_phone, nps_status='waiting_vote'
+                    ).first()
+                    if atend_nps:
+                        atend_nps.nps_voto   = _selected
+                        atend_nps.nps_status = 'waiting_reason'
+                        db_sql.session.commit()
+                        print(f"[NPS] Voto '{_selected}' registrado para {_vote_phone} — aguardando motivo")
+                        
+                        # Define a mensagem de pedido de motivo com base na nota
+                        try:
+                            nota = int(_selected)
+                        except ValueError:
+                            nota = 0
+
+                        if nota >= 9:
+                            msg_texto = (
+                                "Muito obrigado pela sua avaliação! Ficamos felizes em saber que sua experiência com a Corpal foi positiva. 🌱\n\n"
+                                "Caso queira deixar algum comentário sobre o atendimento recebido, é só enviar por aqui. Sua mensagem será registrada com muito carinho."
+                            )
+                        elif nota >= 7:
+                            msg_texto = (
+                                "Obrigado pela sua avaliação! 🌱\n\n"
+                                "Queremos melhorar cada vez mais. Caso tenha alguma sugestão sobre como poderíamos tornar seu atendimento ainda melhor, envie por aqui. Sua opinião será registrada e analisada pela nossa equipe."
+                            )
+                        else:
+                            msg_texto = (
+                                "Sentimos muito por sua experiência não ter sido como esperávamos.\n\n"
+                                "A Corpal valoriza muito a sua opinião e queremos melhorar. Por favor, envie um comentário contando o que aconteceu ou como podemos melhorar nos próximos atendimentos."
+                            )
+
+                        # Pergunta o motivo
+                        requests.post(
+                            f"{WAHA_API_URL}/api/sendText",
+                            headers=get_waha_headers(),
+                            json={
+                                "chatId": f"{_vote_phone}@c.us",
+                                "text": msg_texto,
+                                "session": _vote_session
+                            },
+                            timeout=10
+                        )
+                    else:
+                        print(f"[NPS] Nenhuma sessão NPS 'waiting_vote' encontrada para {_vote_phone}")
+            except Exception as _nps_vote_err:
+                db_sql.session.rollback()
+                print(f"[NPS] Erro ao processar poll.vote: {_nps_vote_err}")
+            return 'OK', 200
+        # ─────────────────────────────────────────────────────────────────────
+
         # ---- WAHA TO INTERNAL CONVERTER ----
         if data.get('event') in ('message', 'message.any', 'message.ack') and 'payload' in data:
             waha_event = data.get('event')
             session = data.get('session')
             payload = data.get('payload', {})
+
             
             if waha_event == 'message.ack':
                 ack_val = payload.get('ack', 0)
@@ -2596,8 +2741,47 @@ def webhook():
             raw_jid = waha_to if fromMe else waha_from
             body = payload.get('body', '')
             msg_type = payload.get('type', 'chat')
-            
-            # Inferir tipo de mídia pelo mimetype ou por campos presentes se necessário
+
+            # ── NPS: intercepta motivo do cliente (mensagem de texto após voto) ──
+            if not fromMe and msg_type == 'chat' and body:
+                _nps_phone = normalize_phone(raw_jid)
+                _atend_nps_motivo = AtendimentoChat.query.filter_by(
+                    numero=_nps_phone, nps_status='waiting_reason'
+                ).first()
+                if _atend_nps_motivo:
+                    try:
+                        # Salva voto + motivo no histórico
+                        _nps_voto_obj = NpsVoto(
+                            numero_cliente = _nps_phone,
+                            atendente      = _atend_nps_motivo.ultimo_atendente,
+                            filial         = None,
+                            setor          = _atend_nps_motivo.ultimo_setor,
+                            voto           = _atend_nps_motivo.nps_voto,
+                            motivo         = body,
+                            data_voto      = get_now().isoformat()
+                        )
+                        db_sql.session.add(_nps_voto_obj)
+                        _atend_nps_motivo.nps_status = 'finished'
+                        db_sql.session.commit()
+                        print(f"[NPS] Motivo registrado para {_nps_phone}: '{body[:80]}'")
+                        # Mensagem de agradecimento final
+                        requests.post(
+                            f"{WAHA_API_URL}/api/sendText",
+                            headers=get_waha_headers(),
+                            json={
+                                "chatId": f"{_nps_phone}@c.us",
+                                "text": "Agradecemos a sua resposta! 🙏 Seu feedback é muito importante para nós.",
+                                "session": session or "corpal"
+                            },
+                            timeout=10
+                        )
+                    except Exception as _nps_motivo_err:
+                        db_sql.session.rollback()
+                        print(f"[NPS] Erro ao salvar motivo: {_nps_motivo_err}")
+                    return 'OK', 200  # Não exibe no chat do atendente
+            # ─────────────────────────────────────────────────────────────────
+
+
             if payload.get('hasMedia') and msg_type in ('chat', None, ''):
                 mimetype = payload.get('media', {}).get('mimetype', '')
                 if mimetype.startswith('audio/'):
@@ -3751,22 +3935,32 @@ def release_chat(id):
     # Registra no SLA que o atendimento foi finalizado
     track_sla_event(contact.phone, event_type='RELEASED')
     
-    # Dispara Webhook NPS para o N8N
+    # ── Dispara NPS direto via WAHA e registra estado na tabela atendimentos_chat ──
     try:
-        nps_payload = {
-            "numero": contact.phone,
-            "instancia": contact.instance,
-            "atendente": old_name,
-            "filial": _filial_r,
-            "setor": _setor_r,
-            "timestamp": get_now().isoformat()
-        }
-        requests.post("https://n8n-n8n.ioms5g.easypanel.host/webhook/acionar-nps", json=nps_payload, timeout=5)
-    except Exception as nps_e:
-        print(f"Erro ao disparar webhook NPS: {nps_e}")
-
-    # Resetar alertas de espera ao finalizar o atendimento
-    try:
+        _nps_session = contact.instance or "corpal"
+        _nps_options = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+        poll_msg = (
+            "Obrigado por entrar em contato com a Corpal! 🌱\n\n"
+            "Para continuarmos melhorando nosso atendimento, avalie sua experiência de *1 a 10*, sendo:\n\n"
+            "*1 = Muito insatisfeito*\n"
+            "*10 = Muito satisfeito*\n\n"
+            "Sua opinião é muito importante para nós."
+        )
+        poll_resp = requests.post(
+            f"{WAHA_API_URL}/api/sendPoll",
+            headers=get_waha_headers(),
+            json={
+                "chatId": f"{contact.phone}@c.us",
+                "poll": {
+                    "name": poll_msg,
+                    "options": _nps_options,
+                    "multipleAnswers": False
+                },
+                "session": _nps_session
+            },
+            timeout=10
+        )
+        # Registra o estado NPS na tabela atendimentos_chat
         atend_chat_rel = AtendimentoChat.query.filter_by(numero=contact.phone).first()
         if atend_chat_rel:
             atend_chat_rel.status = 'bot'
@@ -3774,11 +3968,23 @@ def release_chat(id):
             atend_chat_rel.atendente_desde = None
             atend_chat_rel.alerta_20min_enviado = False
             atend_chat_rel.alerta_40min_enviado = False
+            atend_chat_rel.nps_status = 'waiting_vote'
+            atend_chat_rel.nps_started_at = get_now().isoformat()
+            atend_chat_rel.nps_voto = None
+            # Captura o ID da enquete se o WAHA retornar
+            try:
+                _poll_id = poll_resp.json().get('id') if poll_resp.ok else None
+                atend_chat_rel.nps_poll_id = _poll_id
+            except Exception:
+                pass
             db_sql.session.commit()
-            print(f"[RELEASE] Alertas e atendente resetados para {contact.phone}")
-    except Exception as e_rel:
+            print(f"[NPS] Poll enviado e estado 'waiting_vote' registrado para {contact.phone}")
+        else:
+            print(f"[NPS] Registro atendimentos_chat não encontrado para {contact.phone} — NPS não registrado")
+    except Exception as nps_e:
         db_sql.session.rollback()
-        print(f"Erro ao resetar alertas no release: {e_rel}")
+        print(f"[NPS] Erro ao disparar NPS: {nps_e}")
+
     
     # Corpal Webhook — evento finalizar
     try:
