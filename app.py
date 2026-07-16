@@ -2632,22 +2632,34 @@ def webhook():
         if data.get('event') == 'poll.vote':
             try:
                 _vote_payload = data.get('payload', {})
+                _poll_info    = _vote_payload.get('poll', {})
+                _poll_id_full = _poll_info.get('id', '')
+                _msg_hash     = _poll_id_full.split('_')[-1] if '_' in _poll_id_full else _poll_id_full
+
                 _vote_info    = _vote_payload.get('vote', {})
                 _vote_from    = _vote_info.get('from', '')
                 _vote_session = data.get('session', 'corpal')
-                # Normaliza o número (remove @lid, @c.us e 9 extra BR)
-                _vote_phone = normalize_phone(_vote_from)
-                _selected   = (_vote_info.get('selectedOptions') or [''])[0]
-                print(f"[NPS] poll.vote recebido de {_vote_phone} — opção: {_selected!r}")
+                _vote_phone   = normalize_phone(_vote_from)
+                _selected     = (_vote_info.get('selectedOptions') or [''])[0]
+                
+                print(f"[NPS] poll.vote recebido — opção: {_selected!r} hash: {_msg_hash!r}")
                 if _selected:  # ignora votos vazios (desvoto no WhatsApp)
-                    atend_nps = AtendimentoChat.query.filter(
-                        db_sql.or_(
-                            AtendimentoChat.numero == _vote_phone,
-                            AtendimentoChat.numero.like(f"%{_vote_phone}%")
-                        ),
-                        AtendimentoChat.nps_status == 'waiting_vote'
-                    ).first()
+                    atend_nps = None
+                    if _msg_hash:
+                        atend_nps = AtendimentoChat.query.filter_by(nps_poll_id=_msg_hash, nps_status='waiting_vote').first()
+                    
+                    # Fallback por numero caso a hash falhe
+                    if not atend_nps:
+                        atend_nps = AtendimentoChat.query.filter(
+                            db_sql.or_(
+                                AtendimentoChat.numero == _vote_phone,
+                                AtendimentoChat.numero.like(f"%{_vote_phone}%")
+                            ),
+                            AtendimentoChat.nps_status == 'waiting_vote'
+                        ).first()
+
                     if atend_nps:
+                        _real_phone = atend_nps.numero
                         atend_nps.nps_voto   = _selected
                         atend_nps.nps_status = 'waiting_reason'
                         db_sql.session.commit()
