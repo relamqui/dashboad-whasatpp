@@ -2816,13 +2816,16 @@ def webhook():
             # ── NPS: intercepta motivo do cliente (mensagem de texto após voto) ──
             if not fromMe and msg_type == 'chat' and body:
                 _nps_phone = normalize_phone(raw_jid)
+                
+                # Bloqueia a linha no banco (FOR UPDATE) para evitar race condition de webhooks duplicados
                 _atend_nps_motivo = AtendimentoChat.query.filter(
                     db_sql.or_(
                         AtendimentoChat.numero == _nps_phone,
                         AtendimentoChat.numero.like(f"%{_nps_phone}%")
                     ),
                     AtendimentoChat.nps_status == 'waiting_reason'
-                ).first()
+                ).with_for_update().first()
+                
                 if _atend_nps_motivo:
                     try:
                         # Salva voto + motivo no histórico
