@@ -909,6 +909,20 @@ function renderMessages(messages) {
 
     let messageContent = msg.text ? String(msg.text) : "";
     const authToken = localStorage.getItem('wp_crm_token');
+
+    // Parse [REPLY:id|text]
+    let replyBlock = '';
+    const replyMatch = messageContent.match(/^\[REPLY:([^|]+)\|([^\]]+)\]\n/);
+    if (replyMatch) {
+        const replyText = replyMatch[2];
+        replyBlock = `<div class="msg-reply-block"><div class="msg-reply-text">${escapeHtml(replyText)}</div></div>`;
+        messageContent = messageContent.replace(replyMatch[0], '');
+    } else if (messageContent === '[MENSAGEM_APAGADA]') {
+        ticks = '';
+        el.innerHTML = `<div class="msg-bubble"><div class="msg-deleted"><svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8z"></path><path fill="currentColor" d="M10.854 5.146a.5.5 0 00-.708 0L8 7.293 5.854 5.146a.5.5 0 10-.708.708L7.293 8l-2.147 2.146a.5.5 0 00.708.708L8 8.707l2.146 2.147a.5.5 0 00.708-.708L8.707 8l2.147-2.146a.5.5 0 000-.708z"></path></svg> <em>Esta mensagem foi apagada</em></div><div class="msg-meta"><span class="msg-time">${msg.time}</span></div></div>`;
+        area.appendChild(el);
+        return;
+    }
     
     if (messageContent.startsWith('[LOCATION_REF] ')) {
         const ref = messageContent.replace('[LOCATION_REF] ', '');
@@ -1035,7 +1049,11 @@ function renderMessages(messages) {
 
     el.innerHTML = `
       <div class="msg-bubble">
+        <div class="msg-actions" onclick="toggleMsgMenu(event, '${msg.id}')">
+          <svg viewBox="0 0 19 20" width="19" height="20"><path fill="currentColor" d="M3.8 6.7l5.7 5.7 5.7-5.7 1.6 1.6-7.3 7.2-7.3-7.2 1.6-1.6z"></path></svg>
+        </div>
         ${botLabel}
+        ${replyBlock}
         ${messageContent}
         <div class="msg-meta">
           <span class="msg-time">${msg.time}</span>
@@ -1160,6 +1178,10 @@ function initWaPlayer(playerEl) {
   });
 }
 
+// ======== REPLY STATE ========
+window.replyingToMsgId = null;
+window.replyingToMsgText = null;
+
 async function sendMessage() {
   const textarea = document.getElementById('messageInput');
   const text = textarea.value.trim();
@@ -1183,7 +1205,11 @@ async function sendMessage() {
 
   // 1. Atualiza Localmente (Optimistic Update) — exibe texto original sem prefixo
   const tempId = 'temp_' + Date.now();
-  const newMsg = { id: tempId, text: textToSend, type: 'out', time };
+  let optimisticText = textToSend;
+  if (window.replyingToMsgId) {
+    optimisticText = `[REPLY:${window.replyingToMsgId}|${window.replyingToMsgText}]\n${textToSend}`;
+  }
+  const newMsg = { id: tempId, text: optimisticText, type: 'out', time };
   if (!currentChat.messages) currentChat.messages = [];
   currentChat.messages.push(newMsg);
   currentChat.lastMsg = text;
@@ -1199,6 +1225,10 @@ async function sendMessage() {
     const area = document.getElementById('messagesArea');
     if (area) area.scrollTop = area.scrollHeight;
   });
+
+  // Limpa o estado de reply após preparar a mensagem
+  const replyId = window.replyingToMsgId;
+  cancelReply();
 
   // 2. Envia para o Backend (com prefixo do atendente)
   try {
@@ -1224,7 +1254,8 @@ async function sendMessage() {
       body: JSON.stringify({
         instance: targetInstance,
         number: cleanNumber,
-        text: textToSend  // Envia com o prefixo *Nome:*
+        text: textToSend,  // Envia com o prefixo *Nome:*
+        reply_to: replyId || null
       })
     });
 
@@ -1260,6 +1291,115 @@ function handleEnter(e) {
     e.preventDefault();
     sendMessage();
   }
+}
+
+// ======== TOGGLE MSG MENU (menu de ações da mensagem) ========
+function toggleMsgMenu(event, msgId) {
+    event.stopPropagation();
+    
+    // Remover menu antigo se existir
+    const oldMenu = document.getElementById('msg-context-menu');
+    if (oldMenu) oldMenu.remove();
+    
+    const menu = document.createElement('div');
+    menu.id = 'msg-context-menu';
+    menu.className = 'msg-context-menu';
+    menu.innerHTML = `
+        <div class="msg-menu-item" onclick="replyToMsg('${msgId}')">Responder</div>
+        <div class="msg-menu-item delete" onclick="deleteMessage('${msgId}')">Apagar</div>
+    `;
+    
+    document.body.appendChild(menu);
+    
+    // Posicionar o menu
+    const rect = event.currentTarget.getBoundingClientRect();
+    menu.style.top = `${rect.bottom + window.scrollY}px`;
+    menu.style.left = `${rect.left + window.scrollX - 120}px`;
+    
+    // Fechar ao clicar fora
+    setTimeout(() => {
+        const closeMenu = (e) => {
+            if (!menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+            }
+        };
+        document.addEventListener('click', closeMenu);
+    }, 0);
+}
+
+// ======== REPLY TO MESSAGE ========
+function replyToMsg(msgId) {
+    const msg = currentChat.messages.find(m => m.id === msgId);
+    if (!msg) return;
+    
+    window.replyingToMsgId = msgId;
+    window.replyingToMsgText = (msg.text || '').replace(/\n/g, ' ').substring(0, 50);
+    
+    const replyBar = document.getElementById('reply-preview-bar');
+    const replyText = document.getElementById('reply-preview-text');
+    if (replyBar && replyText) {
+        replyText.textContent = window.replyingToMsgText;
+        replyBar.style.display = 'flex';
+    }
+    
+    document.getElementById('messageInput').focus();
+    
+    const oldMenu = document.getElementById('msg-context-menu');
+    if (oldMenu) oldMenu.remove();
+}
+
+function cancelReply() {
+    window.replyingToMsgId = null;
+    window.replyingToMsgText = null;
+    const replyBar = document.getElementById('reply-preview-bar');
+    if (replyBar) replyBar.style.display = 'none';
+}
+
+// ======== DELETE MESSAGE ========
+async function deleteMessage(msgId) {
+    const oldMenu = document.getElementById('msg-context-menu');
+    if (oldMenu) oldMenu.remove();
+
+    if (!confirm('Tem certeza que deseja apagar esta mensagem para todos?')) return;
+    
+    // Atualização otimista
+    const msg = currentChat.messages.find(m => m.id === msgId);
+    const originalText = msg ? msg.text : '';
+    if (msg) {
+        msg.text = '[MENSAGEM_APAGADA]';
+        renderMessages(currentChat.messages);
+    }
+    
+    try {
+        const cleanNumber = currentChat.phone.replace(/\D/g, '');
+        const response = await fetch(`${API_URL}/api/whatsapp/delete-message`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}`
+            },
+            body: JSON.stringify({
+                instance: currentChat.instance,
+                number: cleanNumber,
+                message_id: msgId
+            })
+        });
+        
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || 'Falha ao apagar');
+        }
+    } catch (err) {
+        console.error('Erro ao deletar mensagem:', err);
+        showToast(`Erro ao apagar: ${err.message}`);
+        
+        // Reverter atualização otimista
+        if (msg) {
+            msg.text = originalText;
+            renderMessages(currentChat.messages);
+        }
+    }
 }
 
 function autoResize(el) {
@@ -2308,6 +2448,32 @@ async function showNewChat() {
   modal.style.display = 'flex';
   document.getElementById('newChatNumber').value = '';
   document.getElementById('newChatReason').value = 'Olá!';
+
+  // Carrega contatos da agenda
+  const select = document.getElementById('newChatContactSelect');
+  if (select) {
+    select.innerHTML = '<option value="">Carregando agenda...</option>';
+    try {
+      const response = await fetch(`${API_URL}/api/agenda`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('wp_crm_token')}` }
+      });
+      if (response.ok) {
+        const agendaContacts = await response.json();
+        select.innerHTML = '<option value="">-- Selecione ou digite o número abaixo --</option>';
+        agendaContacts.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.phone;
+          opt.textContent = `${c.name} (${c.phone})`;
+          select.appendChild(opt);
+        });
+      } else {
+        select.innerHTML = '<option value="">Agenda não disponível</option>';
+      }
+    } catch (err) {
+      console.warn('Erro ao buscar agenda:', err);
+      select.innerHTML = '<option value="">Erro ao carregar agenda</option>';
+    }
+  }
 }
 
 function closeNewChatModal() {
@@ -2876,4 +3042,56 @@ window.showNewChatWithNumber = async function(number) {
         }
     }
 };
+
+// ======== PASTE IMAGE (Ctrl+V) no messageInput ========
+let _pastedImageFile = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+  const messageInput = document.getElementById('messageInput');
+  if (messageInput) {
+    messageInput.addEventListener('paste', (event) => {
+      const clipboardData = event.clipboardData || window.clipboardData;
+      if (!clipboardData) return;
+      
+      const items = clipboardData.items;
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            openImagePasteModal(file);
+            event.preventDefault();
+            return;
+          }
+        }
+      }
+    });
+  }
+});
+
+function openImagePasteModal(file) {
+  _pastedImageFile = file;
+  const modal = document.getElementById('imagePasteModal');
+  const preview = document.getElementById('imagePastePreview');
+  if (!modal || !preview) return;
+  
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    preview.src = e.target.result;
+    modal.style.display = 'flex';
+  };
+  reader.readAsDataURL(file);
+}
+
+function closeImagePasteModal() {
+  const modal = document.getElementById('imagePasteModal');
+  if (modal) modal.style.display = 'none';
+  _pastedImageFile = null;
+}
+
+function confirmImagePaste() {
+  if (!_pastedImageFile) return;
+  sendImageMessage(_pastedImageFile);
+  closeImagePasteModal();
+}
 

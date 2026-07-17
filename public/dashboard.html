@@ -217,6 +217,17 @@
       <!-- Quick Replies Bar -->
       <div class="quick-replies-bar" id="quickRepliesBar" style="display: none;"></div>
 
+      <!-- Barra de preview de resposta (reply) -->
+      <div class="reply-preview-bar" id="reply-preview-bar" style="display:none">
+        <div class="reply-preview-content">
+          <span class="reply-preview-label">Respondendo a:</span>
+          <span class="reply-preview-text" id="reply-preview-text"></span>
+        </div>
+        <button class="icon-btn" onclick="cancelReply()" title="Cancelar resposta" style="flex-shrink:0;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
       <!-- Barra de digitação -->
       <div class="input-bar" id="inputBar">
         <button class="icon-btn emoji-btn" title="Emojis" onclick="toggleEmojiPanel()">
@@ -330,6 +341,14 @@
     </div>
     <div style="padding: 20px;">
       <div style="margin-bottom: 15px;">
+        <label style="display:block;margin-bottom:5px;font-size:12px;color:var(--text-muted)">Agenda de Contatos</label>
+        <select id="newChatContactSelect"
+          style="width:100%;padding:10px;background:#2a3942;border:1px solid #3b4a54;border-radius:8px;color:white;outline:none;cursor:pointer;"
+          onchange="document.getElementById('newChatNumber').value = this.value">
+          <option value="">-- Carregando agenda... --</option>
+        </select>
+      </div>
+      <div style="margin-bottom: 15px;">
         <label style="display:block;margin-bottom:5px;font-size:12px;color:var(--text-muted)">Número (com DDD e DDI, Ex: 553599999999)</label>
         <input type="text" id="newChatNumber" placeholder="Ex: 553599999999" 
           style="width:100%;padding:10px;background:#2a3942;border:1px solid #3b4a54;border-radius:8px;color:white;outline:none;">
@@ -394,6 +413,25 @@
         <span style="font-size:11px;color:var(--text-muted);margin-top:4px;display:block">O número será normalizado automaticamente (DDD + número)</span>
       </div>
       <button class="btn-save-notes" style="width:100%;" onclick="confirmSendContact()">📤 Enviar Contato</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Preview Imagem (Ctrl+V / Paste) -->
+<div class="modal-overlay" id="imagePasteModal" style="display:none" onclick="closeImagePasteModal()">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width:500px;">
+    <div class="modal-header">
+      <h3>Enviar Imagem</h3>
+      <button class="icon-btn" onclick="closeImagePasteModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div style="padding: 20px; text-align:center;">
+      <img id="imagePastePreview" src="" alt="Preview" style="max-width:100%;max-height:300px;border-radius:8px;margin-bottom:16px;" />
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button class="btn-save-notes" style="background:rgba(255,255,255,0.1);color:var(--text-primary);" onclick="closeImagePasteModal()">Cancelar</button>
+        <button class="btn-save-notes" onclick="confirmImagePaste()">📤 Enviar Imagem</button>
+      </div>
     </div>
   </div>
 </div>

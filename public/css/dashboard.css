@@ -1337,3 +1337,112 @@ body {
 .quick-reply-chip .del-btn:hover { opacity: 1; }  
 .quick-reply-chip.add-btn { background: transparent; border: 1px dashed var(--text-muted); color: var(--text-muted); }  
 .quick-reply-chip.add-btn:hover { background: rgba(255,255,255,0.05); color: #fff; border-color: #fff; } 
+
+/* ======== REPLY PREVIEW BAR ======== */
+.reply-preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(0,0,0,0.2);
+  border-left: 4px solid var(--green);
+  margin: 0 16px 8px 16px;
+  border-radius: 0 8px 8px 0;
+  color: var(--text-primary);
+}
+.reply-preview-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.reply-preview-label {
+  font-size: 11px;
+  color: var(--green);
+  font-weight: bold;
+}
+.reply-preview-text {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.8;
+}
+
+/* ======== MESSAGE REPLY BLOCK ======== */
+.msg-reply-block {
+  background: rgba(0,0,0,0.15);
+  border-left: 4px solid var(--green);
+  padding: 6px 10px;
+  border-radius: 4px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.msg-reply-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+/* ======== MESSAGE ACTIONS & CONTEXT MENU ======== */
+.msg-bubble {
+  position: relative;
+  padding-right: 32px;
+}
+.msg-actions {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  background: linear-gradient(180deg, rgba(32,44,51,0.8) 0%, rgba(32,44,51,0) 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 10;
+}
+.msg-bubble:hover .msg-actions {
+  opacity: 1;
+}
+.msg-actions:hover {
+  color: var(--text-primary);
+}
+
+.msg-context-menu {
+  position: fixed;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  padding: 6px 0;
+  z-index: 9999;
+  min-width: 140px;
+}
+.msg-menu-item {
+  padding: 10px 16px;
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.msg-menu-item:hover {
+  background: rgba(255,255,255,0.05);
+}
+.msg-menu-item.delete {
+  color: #f87171;
+}
+.msg-deleted {
+  color: var(--text-muted);
+  font-style: italic;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
