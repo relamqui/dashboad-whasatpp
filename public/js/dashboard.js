@@ -1114,7 +1114,7 @@ function buildWaAudioHTML(src, avatarLetter, isOut) {
           </div>
         </div>
       </div>
-      ${src ? `<a href="${src}" download="audio.mp3" target="_blank" title="Baixar Áudio" style="color: var(--text-muted); opacity: 0.7; padding: 4px; display: flex; align-items: center; justify-content: center; text-decoration: none;">
+      ${src ? `<a href="${src}" onclick="downloadAudioFile(event, '${src}')" title="Baixar Áudio" style="color: var(--text-muted); opacity: 0.7; padding: 4px; display: flex; align-items: center; justify-content: center; text-decoration: none; cursor: pointer;">
                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                    <polyline points="7 10 12 15 17 10"></polyline>
@@ -1124,6 +1124,35 @@ function buildWaAudioHTML(src, avatarLetter, isOut) {
     </div>
   `;
 }
+
+window.downloadAudioFile = async function(event, url) {
+  event.preventDefault();
+  const btn = event.currentTarget;
+  btn.style.opacity = '0.3';
+  btn.style.pointerEvents = 'none';
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Erro ao buscar o áudio');
+    const blob = await response.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    // Tenta deduzir a extensão
+    const ext = url.includes('.ogg') ? 'ogg' : (url.includes('.mp3') ? 'mp3' : 'oga');
+    a.download = `audio_${Date.now()}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(blobUrl);
+  } catch (error) {
+    console.error('Erro no download:', error);
+    // Fallback: abre numa nova aba se falhar o fetch (ex: CORS)
+    window.open(url, '_blank');
+  } finally {
+    btn.style.opacity = '0.7';
+    btn.style.pointerEvents = 'auto';
+  }
+};
 
 // Inicializa um player de áudio customizado
 const _waAudioInstances = [];
