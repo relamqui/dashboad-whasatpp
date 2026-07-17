@@ -1926,6 +1926,64 @@ def send_image():
         print(f"Erro send_image: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/whatsapp/delete-message', methods=['POST'])
+@auth_required
+def delete_message():
+    data = request.json
+    inst = data.get('instance')
+    number = "".join(filter(str.isdigit, str(data.get('number', ''))))
+    number = normalize_br_phone(number)
+    msg_id = data.get('message_id')
+
+    if not inst or not number or not msg_id:
+        return jsonify({'error': 'Instância, número e message_id são obrigatórios'}), 400
+
+    try:
+        from urllib.parse import quote
+        chat_id = f"{number}@c.us"
+
+        # Monta o messageId completo se necessário
+        waha_msg_id = msg_id
+        if not waha_msg_id.startswith('true_') and not waha_msg_id.startswith('false_'):
+            waha_msg_id = f"true_{chat_id}_{waha_msg_id}"
+
+        safe_chat_id = quote(chat_id, safe='')
+        safe_msg_id = quote(waha_msg_id, safe='')
+
+        # Tentativa 1: DELETE /api/{session}/messages/{chatId}/{messageId}
+        url_1 = f"{WAHA_API_URL}/api/{inst}/messages/{safe_chat_id}/{safe_msg_id}"
+        print(f"[DELETE] Tentando URL 1: DELETE {url_1}")
+        res = requests.delete(url_1, headers=get_waha_headers(), timeout=30)
+
+        if res.status_code not in [200, 201, 204]:
+            # Tentativa 2: DELETE /api/{session}/chats/{chatId}/messages/{messageId}
+            url_2 = f"{WAHA_API_URL}/api/{inst}/chats/{safe_chat_id}/messages/{safe_msg_id}"
+            print(f"[DELETE] Tentando URL 2: DELETE {url_2}")
+            res = requests.delete(url_2, headers=get_waha_headers(), timeout=30)
+
+        if res.status_code not in [200, 201, 204]:
+            # Tentativa 3: POST /api/messages/delete (WAHA Core/Plus mais antigo)
+            url_3 = f"{WAHA_API_URL}/api/messages/delete"
+            payload = {"session": inst, "chatId": chat_id, "messageId": msg_id, "id": msg_id}
+            print(f"[DELETE] Tentando URL 3: POST {url_3}")
+            res = requests.post(url_3, json=payload, headers=get_waha_headers(), timeout=30)
+
+        print(f"[DELETE] Response status final: {res.status_code}")
+
+        if res.status_code not in [200, 201, 204]:
+            return jsonify({'error': f'Falha ao apagar no WAHA: {res.status_code} - {res.text}'}), 500
+
+        # Marca mensagem como apagada no banco local
+        msg = Message.query.get(msg_id)
+        if msg:
+            msg.text = '[MENSAGEM_APAGADA]'
+            db_sql.session.commit()
+
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        print(f"Erro ao deletar: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/whatsapp/send-video', methods=['POST'])
 @auth_required
 def send_video():
@@ -3313,6 +3371,28 @@ def webhook():
     except Exception as e:
         print(f"Erro webhook: {e}")
         return 'ERR', 500
+
+@app.route('/api/agenda', methods=['GET'])
+@auth_required
+def get_agenda():
+    """Retorna todos os contatos com nome válido para a agenda do modal de novo chat."""
+    contacts = Contact.query.filter(
+        Contact.name != None,
+        Contact.name != ''
+    ).all()
+
+    seen_phones = set()
+    agenda_list = []
+
+    for c in contacts:
+        # Considera válido se o nome for diferente do telefone
+        if c.name != c.phone and c.phone not in seen_phones:
+            seen_phones.add(c.phone)
+            agenda_list.append({'name': c.name, 'phone': c.phone})
+
+    # Ordenar alfabeticamente pelo nome
+    agenda_list.sort(key=lambda x: (x['name'] or '').lower())
+    return jsonify(agenda_list)
 
 @app.route('/api/contacts', methods=['GET'])
 @auth_required

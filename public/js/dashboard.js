@@ -1047,11 +1047,16 @@ function renderMessages(messages) {
         messageContent = escapeHtml(messageContent).replace(/\n/g, '<br>').replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>');
     }
 
+    // Só mostra botão de ações para mensagens reais (não temp_)
+    const msgActionsBtn = msg.id && !String(msg.id).startsWith('temp_') && !String(msg.id).startsWith('img_temp_')
+      ? `<div class="msg-actions" data-msgid="${escapeHtml(String(msg.id))}" onclick="toggleMsgMenu(event, this.dataset.msgid)">
+          <svg viewBox="0 0 19 20" width="19" height="20"><path fill="currentColor" d="M3.8 6.7l5.7 5.7 5.7-5.7 1.6 1.6-7.3 7.2-7.3-7.2 1.6-1.6z"></path></svg>
+        </div>`
+      : '';
+
     el.innerHTML = `
       <div class="msg-bubble">
-        <div class="msg-actions" onclick="toggleMsgMenu(event, '${msg.id}')">
-          <svg viewBox="0 0 19 20" width="19" height="20"><path fill="currentColor" d="M3.8 6.7l5.7 5.7 5.7-5.7 1.6 1.6-7.3 7.2-7.3-7.2 1.6-1.6z"></path></svg>
-        </div>
+        ${msgActionsBtn}
         ${botLabel}
         ${replyBlock}
         ${messageContent}
@@ -1334,7 +1339,14 @@ function replyToMsg(msgId) {
     if (!msg) return;
     
     window.replyingToMsgId = msgId;
-    window.replyingToMsgText = (msg.text || '').replace(/\n/g, ' ').substring(0, 50);
+    // Remove prefixos especiais para exibir texto limpo
+    let cleanText = (msg.text || '');
+    cleanText = cleanText.replace(/^\[REPLY:[^\]]+\]\n/, ''); // remove reply aninhado
+    cleanText = cleanText.replace(/^\[IMAGE_REF\].*/, '🖼️ Imagem');
+    cleanText = cleanText.replace(/^\[AUDIO_REF\].*/, '🎵 Áudio');
+    cleanText = cleanText.replace(/^\[VIDEO_REF\].*/, '🎥 Vídeo');
+    cleanText = cleanText.replace(/^\[DOC_REF\].*/, '📄 Documento');
+    window.replyingToMsgText = cleanText.replace(/\n/g, ' ').substring(0, 80);
     
     const replyBar = document.getElementById('reply-preview-bar');
     const replyText = document.getElementById('reply-preview-text');
