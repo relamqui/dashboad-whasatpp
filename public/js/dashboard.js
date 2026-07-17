@@ -1076,7 +1076,10 @@ function renderMessages(messages) {
     area.appendChild(el);
   });
 
-  area.scrollTop = area.scrollHeight;
+  // Garante o scroll real para o final após o DOM renderizar
+  setTimeout(() => {
+    area.scrollTop = area.scrollHeight;
+  }, 100);
 
   // Ativar todos os players de áudio na área
   area.querySelectorAll('.wa-audio-player[data-src]').forEach(initWaPlayer);
@@ -1232,11 +1235,11 @@ async function sendMessage() {
   textarea.value = '';
   autoResize(textarea);
   updateSendBtn();
-  // Garante scroll para o final apos renderizacao no DOM
-  requestAnimationFrame(() => {
+  
+  setTimeout(() => {
     const area = document.getElementById('messagesArea');
     if (area) area.scrollTop = area.scrollHeight;
-  });
+  }, 100);
 
   // Limpa o estado de reply após preparar a mensagem
   const replyId = window.replyingToMsgId;
