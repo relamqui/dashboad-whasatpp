@@ -716,7 +716,6 @@ function renderChatList(contacts) {
         <div class="chat-item-top">
           <span class="chat-item-name">${c.name}</span>
           <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-             ${tagsHtml}
              <span class="chat-item-time ${timeClass}">${c.time}</span>
           </div>
         </div>
