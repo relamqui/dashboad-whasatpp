@@ -1289,6 +1289,7 @@ async function sendMessage() {
     }
     if (realId && typeof realId === 'string') {
       newMsg.id = realId;
+      renderMessages(currentChat.messages);
     }
     
     console.log('Mensagem enviada via WAHA:', targetInstance);
@@ -1634,6 +1635,7 @@ async function sendAudioMessage(base64Data) {
       newMsg.id = realId;
       // KEEP [AUDIO_LOCAL] — the base64 data plays correctly in the browser
       // Don't switch to [AUDIO_REF] because the server proxy may not have it yet
+      renderMessages(currentChat.messages);
       _pendingAudioIds.add(realId); // Mark to skip socket duplicate
     }
 
@@ -2081,6 +2083,7 @@ async function sendImageMessage(file) {
         newMsg.id = realId;
         newMsg.text = `[IMAGE_SENT] ${targetInstance}|${realId}`;
         _pendingImageIds.add(realId);
+        renderMessages(currentChat.messages);
       }
       
       showToast('Imagem enviada!');
@@ -2144,6 +2147,7 @@ async function sendVideoMessage(file) {
         newMsg.id = realId;
         newMsg.text = `[VIDEO_SENT] ${targetInstance}|${realId}`;
         _pendingVideoIds.add(realId);
+        renderMessages(currentChat.messages);
       }
       
       showToast('Vídeo enviado!');
