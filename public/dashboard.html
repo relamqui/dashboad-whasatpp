@@ -8,6 +8,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/dashboard.css" />
+  <!-- Cropper.js para recorte de imagens coladas -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css" />
 </head>
 <body>
 
@@ -417,21 +419,24 @@
   </div>
 </div>
 
-<!-- Modal Preview Imagem (Ctrl+V / Paste) -->
-<div class="modal-overlay" id="imagePasteModal" style="display:none" onclick="closeImagePasteModal()">
-  <div class="modal-box" onclick="event.stopPropagation()" style="max-width:500px;">
+<!-- Modal Crop de Imagem (Ctrl+V / Paste) -->
+<div class="modal-overlay" id="imagePasteModal" style="display:none">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width:640px;width:95%;">
     <div class="modal-header">
-      <h3>Enviar Imagem</h3>
+      <h3>✂️ Recortar e Enviar Imagem</h3>
       <button class="icon-btn" onclick="closeImagePasteModal()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div style="padding: 20px; text-align:center;">
-      <img id="imagePastePreview" src="" alt="Preview" style="max-width:100%;max-height:300px;border-radius:8px;margin-bottom:16px;" />
-      <div style="display:flex;gap:10px;justify-content:flex-end;">
-        <button class="btn-save-notes" style="background:rgba(255,255,255,0.1);color:var(--text-primary);" onclick="closeImagePasteModal()">Cancelar</button>
-        <button class="btn-save-notes" onclick="confirmImagePaste()">📤 Enviar Imagem</button>
+    <div style="padding: 16px 20px;">
+      <div style="max-height:420px;overflow:hidden;background:#111;border-radius:8px;">
+        <img id="imageToCrop" src="" alt="Imagem para recortar" style="max-width:100%;display:block;" />
       </div>
+      <p style="font-size:12px;color:var(--text-muted);margin:10px 0 0;">Arraste para reposicionar • Use as alças para redimensionar</p>
+    </div>
+    <div style="padding: 0 20px 20px; display:flex; gap:10px; justify-content:flex-end;">
+      <button class="btn-save-notes" style="background:rgba(255,255,255,0.1);color:var(--text-primary);" onclick="closeImagePasteModal()">Cancelar</button>
+      <button class="btn-save-notes" onclick="confirmImageCrop()">📤 Enviar Imagem</button>
     </div>
   </div>
 </div>
@@ -443,6 +448,7 @@
 </div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
 <script src="js/data.js"></script>
 <script src="js/dashboard.js"></script>
 </body>

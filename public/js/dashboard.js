@@ -3056,7 +3056,7 @@ window.showNewChatWithNumber = async function(number) {
 };
 
 // ======== PASTE IMAGE (Ctrl+V) no messageInput ========
-let _pastedImageFile = null;
+let _currentCropper = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   const messageInput = document.getElementById('messageInput');
@@ -3064,14 +3064,14 @@ document.addEventListener('DOMContentLoaded', () => {
     messageInput.addEventListener('paste', (event) => {
       const clipboardData = event.clipboardData || window.clipboardData;
       if (!clipboardData) return;
-      
+
       const items = clipboardData.items;
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         if (item.kind === 'file' && item.type.startsWith('image/')) {
           const file = item.getAsFile();
           if (file) {
-            openImagePasteModal(file);
+            openImageCropModal(file);
             event.preventDefault();
             return;
           }
@@ -3081,16 +3081,37 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-function openImagePasteModal(file) {
-  _pastedImageFile = file;
+function openImageCropModal(file) {
   const modal = document.getElementById('imagePasteModal');
-  const preview = document.getElementById('imagePastePreview');
-  if (!modal || !preview) return;
-  
+  const imgEl = document.getElementById('imageToCrop');
+  if (!modal || !imgEl) return;
+
+  // Destrói cropper anterior se existir
+  if (_currentCropper) {
+    _currentCropper.destroy();
+    _currentCropper = null;
+  }
+
   const reader = new FileReader();
   reader.onload = (e) => {
-    preview.src = e.target.result;
+    imgEl.src = e.target.result;
     modal.style.display = 'flex';
+
+    // Inicia o Cropper.js após a imagem carregar
+    imgEl.onload = () => {
+      _currentCropper = new Cropper(imgEl, {
+        viewMode: 1,
+        dragMode: 'move',
+        autoCropArea: 0.95,
+        restore: false,
+        guides: true,
+        center: true,
+        highlight: false,
+        cropBoxMovable: true,
+        cropBoxResizable: true,
+        toggleDragModeOnDblclick: false,
+      });
+    };
   };
   reader.readAsDataURL(file);
 }
@@ -3098,12 +3119,27 @@ function openImagePasteModal(file) {
 function closeImagePasteModal() {
   const modal = document.getElementById('imagePasteModal');
   if (modal) modal.style.display = 'none';
-  _pastedImageFile = null;
+  if (_currentCropper) {
+    _currentCropper.destroy();
+    _currentCropper = null;
+  }
 }
 
-function confirmImagePaste() {
-  if (!_pastedImageFile) return;
-  sendImageMessage(_pastedImageFile);
-  closeImagePasteModal();
+function confirmImageCrop() {
+  if (!_currentCropper) return;
+
+  _currentCropper.getCroppedCanvas({
+    maxWidth: 1920,
+    maxHeight: 1920,
+  }).toBlob((blob) => {
+    if (blob) {
+      const croppedFile = new File([blob], 'imagem_colada.jpg', {
+        type: 'image/jpeg',
+        lastModified: Date.now()
+      });
+      sendImageMessage(croppedFile);
+      closeImagePasteModal();
+    }
+  }, 'image/jpeg', 0.88);
 }
 
