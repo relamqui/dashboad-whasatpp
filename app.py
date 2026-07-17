@@ -1624,6 +1624,7 @@ def send_message():
     number = "".join(filter(str.isdigit, str(data.get('number', ''))))
     number = normalize_br_phone(number)
     text = data.get('text', '')
+    reply_to = data.get('reply_to')
     
     if not inst or not number:
         return jsonify({'error': 'Instância e número são obrigatórios'}), 400
@@ -1643,7 +1644,7 @@ def send_message():
         payload = {
             "chatId": f"{number}@c.us",
             "id": None,
-            "reply_to": None,
+            "reply_to": reply_to,
             "text": text,
             "linkPreview": True,
             "linkPreviewHighQuality": False,
