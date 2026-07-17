@@ -914,7 +914,14 @@ function renderMessages(messages) {
     let replyBlock = '';
     const replyMatch = messageContent.match(/^\[REPLY:([^|]+)\|([^\]]+)\]\n/);
     if (replyMatch) {
-        const replyText = replyMatch[2];
+        let replyText = replyMatch[2];
+        // Remove prefixo do atendente (*Nome:*\n) do texto citado
+        replyText = replyText.replace(/^\*[^*]+:\*\n?/, '');
+        // Remove outros prefixos de mídia
+        replyText = replyText.replace(/^\[IMAGE_REF\].*/s, '🖼️ Imagem');
+        replyText = replyText.replace(/^\[AUDIO_REF\].*/s, '🎵 Áudio');
+        replyText = replyText.replace(/^\[VIDEO_REF\].*/s, '🎥 Vídeo');
+        replyText = replyText.replace(/^\[DOC_REF\].*/s, '📄 Documento');
         replyBlock = `<div class="msg-reply-block"><div class="msg-reply-text">${escapeHtml(replyText)}</div></div>`;
         messageContent = messageContent.replace(replyMatch[0], '');
     } else if (messageContent === '[MENSAGEM_APAGADA]') {
@@ -1339,13 +1346,19 @@ function replyToMsg(msgId) {
     if (!msg) return;
     
     window.replyingToMsgId = msgId;
-    // Remove prefixos especiais para exibir texto limpo
+    // Remove todos os prefixos para exibir texto limpo no preview
     let cleanText = (msg.text || '');
-    cleanText = cleanText.replace(/^\[REPLY:[^\]]+\]\n/, ''); // remove reply aninhado
+    // Remove reply aninhado
+    cleanText = cleanText.replace(/^\[REPLY:[^\]]+\]\n/, '');
+    // Remove prefixo do atendente: *Nome:*\n
+    cleanText = cleanText.replace(/^\*[^*]+:\*\n?/, '');
+    // Remove prefixo de mídia
     cleanText = cleanText.replace(/^\[IMAGE_REF\].*/, '🖼️ Imagem');
     cleanText = cleanText.replace(/^\[AUDIO_REF\].*/, '🎵 Áudio');
     cleanText = cleanText.replace(/^\[VIDEO_REF\].*/, '🎥 Vídeo');
     cleanText = cleanText.replace(/^\[DOC_REF\].*/, '📄 Documento');
+    cleanText = cleanText.replace(/^\[IMAGE_LOCAL\].*/, '🖼️ Imagem');
+    cleanText = cleanText.replace(/^\[AUDIO_LOCAL\].*/, '🎵 Áudio');
     window.replyingToMsgText = cleanText.replace(/\n/g, ' ').substring(0, 80);
     
     const replyBar = document.getElementById('reply-preview-bar');
