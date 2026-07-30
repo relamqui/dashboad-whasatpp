@@ -2651,7 +2651,7 @@ start_wait_time_monitor()
 def fetch_and_update_avatar_async(contact_id, phone, instance):
     def _fetch():
         try:
-            url = f"{WAHA_API_URL}/api/contacts/profilePicture?session=corpal&phone={phone}@c.us"
+            url = f"{WAHA_API_URL}/api/contacts/profilePicture?session={instance}&phone={phone}@c.us"
             res = requests.get(url, headers=get_waha_headers(), timeout=10)
             if res.status_code == 200:
                 data = res.json()

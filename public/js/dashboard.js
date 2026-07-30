@@ -382,17 +382,11 @@ function initSocket(token) {
         contact.avatar = data.avatar;
         renderChatList(getFilteredContacts());
         
-        // Atualiza a foto no header do chat se estiver aberto
+        // Atualiza a foto no header do chat e no painel lateral se estiver aberto
         if (currentChat && currentChat.id === data.id) {
           currentChat.avatar = data.avatar;
-          const avatarEl = document.getElementById('currentChatAvatar');
-          if (avatarEl) {
-            if (data.avatar.startsWith('http')) {
-              avatarEl.innerHTML = `<img src="${data.avatar}" alt="Avatar">`;
-            } else {
-              avatarEl.innerHTML = data.avatar;
-            }
-          }
+          setAvatarEl(document.getElementById('chatAvatar'), data.avatar, contact.name);
+          setAvatarEl(document.getElementById('detailsAvatar'), data.avatar, contact.name);
         }
       }
     });
@@ -710,8 +704,12 @@ function renderChatList(contacts) {
     
     let tagsHtml = visibleTags.map(t => `<span class="chat-list-tag ${t.cls}">${escapeHtml(t.label)}</span>`).join('');
 
+    const avatarHtml = (c.avatar && c.avatar.startsWith('http'))
+      ? `<img src="${c.avatar}" alt="" onerror="this.parentElement.textContent='${(c.name||'?')[0].toUpperCase()}'">`
+      : (c.avatar || (c.name||'?')[0].toUpperCase());
+    const avatarBg = (c.avatar && c.avatar.startsWith('http')) ? 'transparent' : avatarColor(c.name);
     item.innerHTML = `
-      <div class="chat-item-avatar" style="background:${avatarColor(c.name)}">${c.avatar}</div>
+      <div class="chat-item-avatar" style="background:${avatarBg}">${avatarHtml}</div>
       <div class="chat-item-body">
         <div class="chat-item-top">
           <span class="chat-item-name">${c.name}</span>
@@ -760,14 +758,12 @@ async function openChat(id) {
   
   // Header
   document.getElementById('chatName').textContent = contact.name;
-  document.getElementById('chatAvatar').textContent = contact.avatar || contact.name[0];
-  document.getElementById('chatAvatar').style.background = avatarColor(contact.name);
+  setAvatarEl(document.getElementById('chatAvatar'), contact.avatar, contact.name);
   document.getElementById('chatStatus').textContent = (contact.instanceName || contact.instance) + ' · Online';
   
   // Sidebar info
   document.getElementById('detailsName').textContent = contact.name;
-  document.getElementById('detailsAvatar').textContent = contact.avatar || contact.name[0];
-  document.getElementById('detailsAvatar').style.background = avatarColor(contact.name);
+  setAvatarEl(document.getElementById('detailsAvatar'), contact.avatar, contact.name);
   document.getElementById('detailsPhone').textContent = contact.phone;
   document.getElementById('detailsInstance').textContent = contact.instanceName || contact.instance;
 
@@ -1688,8 +1684,7 @@ async function sendAudioMessage(base64Data) {
 
 // ─── Contact Details Sidebar ──────────────────────────────────────────────────
 function updateContactDetails(contact) {
-  document.getElementById('detailsAvatar').textContent = contact.avatar;
-  document.getElementById('detailsAvatar').style.background = avatarColor(contact.name);
+  setAvatarEl(document.getElementById('detailsAvatar'), contact.avatar, contact.name);
   document.getElementById('detailsName').textContent = contact.name;
   document.getElementById('detailsPhone').textContent = contact.phone;
   document.getElementById('detailsInstance').textContent = contact.instanceName;
@@ -2495,9 +2490,9 @@ async function openChatMenu() {
         
         // Atualiza UI
         document.getElementById('chatName').textContent = updated.name;
-        document.getElementById('chatAvatar').textContent = updated.avatar;
+        setAvatarEl(document.getElementById('chatAvatar'), updated.avatar, updated.name);
         document.getElementById('detailsName').textContent = updated.name;
-        document.getElementById('detailsAvatar').textContent = updated.avatar;
+        setAvatarEl(document.getElementById('detailsAvatar'), updated.avatar, updated.name);
         
         renderChatList(getFilteredContacts());
         showToast('Nome atualizado com sucesso!');
@@ -2640,6 +2635,23 @@ function avatarColor(name) {
   let hash = 0;
   for (let c of name) hash = c.charCodeAt(0) + ((hash << 5) - hash);
   return colors[Math.abs(hash) % colors.length];
+}
+
+/**
+ * Atualiza um elemento de avatar corretamente:
+ * - Se avatar for uma URL HTTP: exibe <img> e remove background colorido
+ * - Se não: exibe a letra inicial e aplica background colorido
+ */
+function setAvatarEl(el, avatar, name) {
+  if (!el) return;
+  const letter = (name || '?')[0].toUpperCase();
+  if (avatar && avatar.startsWith('http')) {
+    el.innerHTML = `<img src="${avatar}" alt="" onerror="this.parentElement.innerHTML='${letter}'; this.parentElement.style.background='${avatarColor(name||'?')}'">`;
+    el.style.background = 'transparent';
+  } else {
+    el.innerHTML = avatar || letter;
+    el.style.background = avatarColor(name || '?');
+  }
 }
 
 function tagColor(tag) {
