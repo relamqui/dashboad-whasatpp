@@ -48,7 +48,8 @@ def waha_post_with_fallback(url, payload, headers, timeout=30):
     
     def check_number(num):
         try:
-            chk_res = requests.post(check_exists_url, json={"session": session, "phone": num}, headers=headers, timeout=10)
+            # WAHA GET /api/contacts/check-exists
+            chk_res = requests.get(check_exists_url, params={"phone": num, "session": session}, headers=headers, timeout=10)
             if chk_res.status_code == 200:
                 return chk_res.json().get("numberExists", False)
             return True # Em caso de erro HTTP da propria api, permite o envio no escuro
