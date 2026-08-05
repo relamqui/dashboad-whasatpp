@@ -33,29 +33,66 @@ WAHA_API_KEY = os.getenv('WAHA_API_KEY', '')
 
 
 def waha_post_with_fallback(url, payload, headers, timeout=30):
-    import copy, requests
-    res = requests.post(url, json=payload, headers=headers, timeout=timeout)
-    if res.status_code not in (200, 201):
-        chat_id = payload.get("chatId", "")
-        if "@c.us" in chat_id:
-            number = chat_id.replace("@c.us", "")
-            if len(number) == 12 and number.startswith("55"):
-                fallback_number = number[:4] + "9" + number[4:]
-                print(f"[FALLBACK] Tentando com 9 digitos: {fallback_number}")
-                payload_fallback = copy.deepcopy(payload)
-                payload_fallback["chatId"] = f"{fallback_number}@c.us"
-                res2 = requests.post(url, json=payload_fallback, headers=headers, timeout=timeout)
-                if res2.status_code in (200, 201):
-                    return res2
-            elif len(number) == 13 and number.startswith("55"):
-                fallback_number = number[:4] + number[5:]
-                print(f"[FALLBACK] Tentando com 8 digitos: {fallback_number}")
-                payload_fallback = copy.deepcopy(payload)
-                payload_fallback["chatId"] = f"{fallback_number}@c.us"
-                res2 = requests.post(url, json=payload_fallback, headers=headers, timeout=timeout)
-                if res2.status_code in (200, 201):
-                    return res2
-    return res
+    import copy, requests, json
+    from urllib.parse import urlparse
+    
+    chat_id = payload.get("chatId", "")
+    session = payload.get("session", "")
+    
+    if "@c.us" not in chat_id or not session:
+        return requests.post(url, json=payload, headers=headers, timeout=timeout)
+        
+    number = chat_id.replace("@c.us", "")
+    parsed_url = urlparse(url)
+    check_exists_url = f"{parsed_url.scheme}://{parsed_url.netloc}/api/contacts/check-exists"
+    
+    def check_number(num):
+        try:
+            chk_res = requests.post(check_exists_url, json={"session": session, "phone": num}, headers=headers, timeout=10)
+            if chk_res.status_code == 200:
+                return chk_res.json().get("numberExists", False)
+            return True # Em caso de erro HTTP da propria api, permite o envio no escuro
+        except Exception as e:
+            print(f"[FALLBACK] Erro ao tentar check-exists: {e}")
+            return True
+            
+    class MockResponse:
+        def __init__(self, status_code, text):
+            self.status_code = status_code
+            self.text = text
+        def json(self):
+            return json.loads(self.text)
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise Exception(self.text)
+
+    final_number = number
+    
+    if len(number) == 12 and number.startswith("55"):
+        if check_number(number):
+            final_number = number
+        else:
+            number_13 = number[:4] + "9" + number[4:]
+            if check_number(number_13):
+                final_number = number_13
+            else:
+                return MockResponse(400, '{"message": "O número não possui WhatsApp ativo (nem com e nem sem o 9º dígito)."}')
+    elif len(number) == 13 and number.startswith("55"):
+        if check_number(number):
+            final_number = number
+        else:
+            number_12 = number[:4] + number[5:]
+            if check_number(number_12):
+                final_number = number_12
+            else:
+                return MockResponse(400, '{"message": "O número não possui WhatsApp ativo (nem com e nem sem o 9º dígito)."}')
+    else:
+        if not check_number(number):
+            return MockResponse(400, '{"message": "O número não possui WhatsApp ativo."}')
+            
+    payload_final = copy.deepcopy(payload)
+    payload_final["chatId"] = f"{final_number}@c.us"
+    return requests.post(url, json=payload_final, headers=headers, timeout=timeout)
 
 def get_waha_headers():
     headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
