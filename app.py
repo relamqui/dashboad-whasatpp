@@ -32,10 +32,42 @@ WAHA_API_URL = os.getenv('WAHA_API_URL', 'http://localhost:3000').rstrip('/')
 WAHA_API_KEY = os.getenv('WAHA_API_KEY', '')
 
 
+def get_valid_waha_number(number, session, waha_url, headers):
+    import requests
+    from urllib.parse import urlparse
+    parsed_url = urlparse(waha_url)
+    check_exists_url = f"{parsed_url.scheme}://{parsed_url.netloc}/api/contacts/check-exists"
+    
+    def check_number(num):
+        try:
+            chk_res = requests.get(check_exists_url, params={"phone": num, "session": session}, headers=headers, timeout=10)
+            if chk_res.status_code == 200:
+                return chk_res.json().get("numberExists", False)
+            return True
+        except Exception:
+            return True
+
+    if len(number) == 12 and number.startswith("55"):
+        if check_number(number):
+            return number
+        number_13 = number[:4] + "9" + number[4:]
+        if check_number(number_13):
+            return number_13
+        return None
+    elif len(number) == 13 and number.startswith("55"):
+        if check_number(number):
+            return number
+        number_12 = number[:4] + number[5:]
+        if check_number(number_12):
+            return number_12
+        return None
+    
+    if check_number(number):
+        return number
+    return None
+
 def waha_post_with_fallback(url, payload, headers, timeout=30):
     import copy, requests, json
-    from urllib.parse import urlparse
-    
     chat_id = payload.get("chatId", "")
     session = payload.get("session", "")
     
@@ -43,19 +75,7 @@ def waha_post_with_fallback(url, payload, headers, timeout=30):
         return requests.post(url, json=payload, headers=headers, timeout=timeout)
         
     number = chat_id.replace("@c.us", "")
-    parsed_url = urlparse(url)
-    check_exists_url = f"{parsed_url.scheme}://{parsed_url.netloc}/api/contacts/check-exists"
-    
-    def check_number(num):
-        try:
-            # WAHA GET /api/contacts/check-exists
-            chk_res = requests.get(check_exists_url, params={"phone": num, "session": session}, headers=headers, timeout=10)
-            if chk_res.status_code == 200:
-                return chk_res.json().get("numberExists", False)
-            return True # Em caso de erro HTTP da propria api, permite o envio no escuro
-        except Exception as e:
-            print(f"[FALLBACK] Erro ao tentar check-exists: {e}")
-            return True
+    final_number = get_valid_waha_number(number, session, url, headers)
             
     class MockResponse:
         def __init__(self, status_code, text):
@@ -67,32 +87,16 @@ def waha_post_with_fallback(url, payload, headers, timeout=30):
             if self.status_code >= 400:
                 raise Exception(self.text)
 
-    final_number = number
-    
-    if len(number) == 12 and number.startswith("55"):
-        if check_number(number):
-            final_number = number
-        else:
-            number_13 = number[:4] + "9" + number[4:]
-            if check_number(number_13):
-                final_number = number_13
-            else:
-                return MockResponse(400, '{"message": "O número não possui WhatsApp ativo (nem com e nem sem o 9º dígito)."}')
-    elif len(number) == 13 and number.startswith("55"):
-        if check_number(number):
-            final_number = number
-        else:
-            number_12 = number[:4] + number[5:]
-            if check_number(number_12):
-                final_number = number_12
-            else:
-                return MockResponse(400, '{"message": "O número não possui WhatsApp ativo (nem com e nem sem o 9º dígito)."}')
-    else:
-        if not check_number(number):
-            return MockResponse(400, '{"message": "O número não possui WhatsApp ativo."}')
+    if not final_number:
+        return MockResponse(400, '{"message": "O número não possui WhatsApp ativo."}')
             
     payload_final = copy.deepcopy(payload)
     payload_final["chatId"] = f"{final_number}@c.us"
+    
+    reply_to = payload_final.get("reply_to")
+    if reply_to and not reply_to.startswith("true_") and not reply_to.startswith("false_"):
+        payload_final["reply_to"] = f"true_{final_number}@c.us_{reply_to}"
+        
     return requests.post(url, json=payload_final, headers=headers, timeout=timeout)
 
 def get_waha_headers():
@@ -2005,9 +2009,12 @@ def delete_message():
 
     try:
         from urllib.parse import quote
-        chat_id = f"{number}@c.us"
+        final_number = get_valid_waha_number(number, inst, WAHA_API_URL, get_waha_headers())
+        if not final_number:
+            final_number = number # fallback de seguranca
+            
+        chat_id = f"{final_number}@c.us"
 
-        # Monta o messageId completo se necessário
         waha_msg_id = msg_id
         if not waha_msg_id.startswith('true_') and not waha_msg_id.startswith('false_'):
             waha_msg_id = f"true_{chat_id}_{waha_msg_id}"
@@ -2015,19 +2022,16 @@ def delete_message():
         safe_chat_id = quote(chat_id, safe='')
         safe_msg_id = quote(waha_msg_id, safe='')
 
-        # Tentativa 1: DELETE /api/{session}/messages/{chatId}/{messageId}
         url_1 = f"{WAHA_API_URL}/api/{inst}/messages/{safe_chat_id}/{safe_msg_id}"
         print(f"[DELETE] Tentando URL 1: DELETE {url_1}")
         res = requests.delete(url_1, headers=get_waha_headers(), timeout=30)
 
         if res.status_code not in [200, 201, 204]:
-            # Tentativa 2: DELETE /api/{session}/chats/{chatId}/messages/{messageId}
             url_2 = f"{WAHA_API_URL}/api/{inst}/chats/{safe_chat_id}/messages/{safe_msg_id}"
             print(f"[DELETE] Tentando URL 2: DELETE {url_2}")
             res = requests.delete(url_2, headers=get_waha_headers(), timeout=30)
 
         if res.status_code not in [200, 201, 204]:
-            # Tentativa 3: POST /api/messages/delete (WAHA Core/Plus mais antigo)
             url_3 = f"{WAHA_API_URL}/api/messages/delete"
             payload = {"session": inst, "chatId": chat_id, "messageId": msg_id, "id": msg_id}
             print(f"[DELETE] Tentando URL 3: POST {url_3}")
