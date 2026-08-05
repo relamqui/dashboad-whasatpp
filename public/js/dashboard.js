@@ -879,7 +879,7 @@ function renderMessages(messages) {
 
     let ticks = '';
     if (msg.type === 'out') {
-      const ack = msg.ack !== undefined ? msg.ack : 2; // Padrão antigo 2
+      const ack = msg.ack !== undefined ? msg.ack : 0; // Padrão novo 0 (Pendente)
       const iconClock = `<svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8z"></path><path d="M7.5 4.5v3.65l2.6 1.5.75-1.3-1.85-1.1V4.5h-1.5z"></path></svg>`;
       const iconSent = `<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M13.65 3.35a.75.75 0 010 1.06l-7.5 7.5a.75.75 0 01-1.06 0l-3.5-3.5a.75.75 0 111.06-1.06l2.97 2.97 6.97-6.97a.75.75 0 011.06 0z"></path></svg>`;
       const iconDelivered = `<svg viewBox="0 0 20 16" width="16" height="13" fill="currentColor"><path d="M19.65 3.35a.75.75 0 010 1.06l-7.5 7.5a.75.75 0 01-1.06 0l-3.5-3.5a.75.75 0 111.06-1.06l2.97 2.97 6.97-6.97a.75.75 0 011.06 0z"></path><path d="M14.65 3.35a.75.75 0 010 1.06l-2.5 2.5a.75.75 0 11-1.06-1.06l2.5-2.5a.75.75 0 011.06 0zM5.35 11.85a.75.75 0 101.06-1.06L3.91 8.29a.75.75 0 10-1.06 1.06l2.5 2.5z"></path></svg>`;
@@ -1324,14 +1324,29 @@ async function sendMessage() {
       realId = realId.id || realId._serialized || realId;
     }
     if (realId && typeof realId === 'string') {
-      newMsg.id = realId;
+      const webhookMsgIndex = currentChat.messages.findIndex(m => m.id === realId);
+      if (webhookMsgIndex > -1) {
+          const tempIndex = currentChat.messages.findIndex(m => m.id === tempId);
+          if (tempIndex > -1) currentChat.messages.splice(tempIndex, 1);
+      } else {
+          newMsg.id = realId;
+      }
       renderMessages(currentChat.messages);
-    }
+}
     
     console.log('Mensagem enviada via WAHA:', targetInstance);
   } catch (err) {
     console.error('Erro ao enviar mensagem:', err);
     showToast(`Erro ao enviar: ${err.message}`);
+    if (typeof currentChat !== 'undefined' && currentChat && currentChat.messages && typeof tempId !== 'undefined') {
+      const idx = currentChat.messages.findIndex(m => m.id === tempId);
+      if (idx > -1) {
+        currentChat.messages.splice(idx, 1);
+        if (typeof renderMessages === 'function') {
+            renderMessages(currentChat.messages);
+        }
+      }
+    }
   }
 }
 
@@ -1679,6 +1694,15 @@ async function sendAudioMessage(base64Data) {
   } catch (err) {
     console.error('Erro ao enviar áudio:', err);
     showToast(`Erro ao enviar áudio: ${err.message}`);
+    if (typeof currentChat !== 'undefined' && currentChat && currentChat.messages && typeof tempId !== 'undefined') {
+      const idx = currentChat.messages.findIndex(m => m.id === tempId);
+      if (idx > -1) {
+        currentChat.messages.splice(idx, 1);
+        if (typeof renderMessages === 'function') {
+            renderMessages(currentChat.messages);
+        }
+      }
+    }
   }
 }
 
@@ -2125,6 +2149,15 @@ async function sendImageMessage(file) {
     } catch (err) {
       console.error('Erro ao enviar imagem:', err);
       showToast(`Erro ao enviar: ${err.message}`);
+    if (typeof currentChat !== 'undefined' && currentChat && currentChat.messages && typeof tempId !== 'undefined') {
+      const idx = currentChat.messages.findIndex(m => m.id === tempId);
+      if (idx > -1) {
+        currentChat.messages.splice(idx, 1);
+        if (typeof renderMessages === 'function') {
+            renderMessages(currentChat.messages);
+        }
+      }
+    }
     }
   };
   reader.readAsDataURL(file);
@@ -2189,6 +2222,15 @@ async function sendVideoMessage(file) {
     } catch (err) {
       console.error('Erro ao enviar vídeo:', err);
       showToast(`Erro ao enviar: ${err.message}`);
+    if (typeof currentChat !== 'undefined' && currentChat && currentChat.messages && typeof tempId !== 'undefined') {
+      const idx = currentChat.messages.findIndex(m => m.id === tempId);
+      if (idx > -1) {
+        currentChat.messages.splice(idx, 1);
+        if (typeof renderMessages === 'function') {
+            renderMessages(currentChat.messages);
+        }
+      }
+    }
     }
   };
   reader.readAsDataURL(file);
@@ -2260,6 +2302,15 @@ async function sendDocumentMessage(file) {
     } catch (err) {
       console.error('Erro ao enviar arquivo:', err);
       showToast(`Erro ao enviar: ${err.message}`);
+    if (typeof currentChat !== 'undefined' && currentChat && currentChat.messages && typeof tempId !== 'undefined') {
+      const idx = currentChat.messages.findIndex(m => m.id === tempId);
+      if (idx > -1) {
+        currentChat.messages.splice(idx, 1);
+        if (typeof renderMessages === 'function') {
+            renderMessages(currentChat.messages);
+        }
+      }
+    }
     }
   };
   reader.readAsDataURL(file);
@@ -2880,6 +2931,15 @@ async function sendLocationMessage() {
       } catch (err) {
         console.error('Erro ao enviar localização:', err);
         showToast(`Erro ao enviar localização: ${err.message}`);
+    if (typeof currentChat !== 'undefined' && currentChat && currentChat.messages && typeof tempId !== 'undefined') {
+      const idx = currentChat.messages.findIndex(m => m.id === tempId);
+      if (idx > -1) {
+        currentChat.messages.splice(idx, 1);
+        if (typeof renderMessages === 'function') {
+            renderMessages(currentChat.messages);
+        }
+      }
+    }
       }
     }, (error) => {
       console.error("Erro ao obter localização", error);
@@ -2969,6 +3029,15 @@ async function confirmSendContact() {
   } catch (err) {
     console.error('Erro ao enviar contato:', err);
     showToast(`Erro ao enviar contato: ${err.message}`);
+    if (typeof currentChat !== 'undefined' && currentChat && currentChat.messages && typeof tempId !== 'undefined') {
+      const idx = currentChat.messages.findIndex(m => m.id === tempId);
+      if (idx > -1) {
+        currentChat.messages.splice(idx, 1);
+        if (typeof renderMessages === 'function') {
+            renderMessages(currentChat.messages);
+        }
+      }
+    }
     const btn = document.querySelector('#sendContactModal .btn-save-notes');
     btn.innerHTML = '📤 Enviar Contato';
     btn.disabled = false;
