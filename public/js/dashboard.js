@@ -3335,3 +3335,32 @@ function confirmImageCrop() {
   }, 'image/jpeg', 0.88);
 }
 
+
+window.promptAdminPassword = async function() {
+  const pwd = prompt('Digite a senha do administrador:');
+  if (!pwd) return;
+  try {
+    let res = await fetch(${API_URL}/api/auth/login, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'admin@admin.com', password: pwd })
+    });
+    if (res.ok) {
+      location.href = 'admin.html';
+      return;
+    }
+    res = await fetch(${API_URL}/api/auth/login, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'admin@admin', password: pwd })
+    });
+    if (res.ok) {
+      location.href = 'admin.html';
+    } else {
+      alert('Senha incorreta!');
+    }
+  } catch(e) {
+    console.error(e);
+    alert('Erro de conexão ao verificar a senha.');
+  }
+};
