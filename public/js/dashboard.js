@@ -634,6 +634,57 @@ function updateChatBadge() {
 }
 
 // ─── Chat List ────────────────────────────────────────────────────────────────
+async function fetchWahaAvatar(c) {
+  if (!c || (c.avatar && c.avatar.startsWith('http')) || c._fetchingAvatar) return;
+  c._fetchingAvatar = true;
+  
+  try {
+    let cleanPhone = (c.phone || '').replace(/\D/g, '');
+    if (!cleanPhone) return;
+    
+    const contactId = cleanPhone + '@c.us';
+    const session = c.instance || (typeof getDefaultInstance === 'function' ? getDefaultInstance() : 'corpal');
+    const url = `https://n8n-waha.ioms5g.easypanel.host/api/contacts/profile-picture?contactId=${encodeURIComponent(contactId)}&refresh=false&session=${session}`;
+    
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'accept': '*/*',
+        'X-Api-Key': 'c6ff0ab36f0c4069a8946b3eb1457a1f'
+      }
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.profilePictureURL) {
+        c.avatar = data.profilePictureURL;
+        
+        // Atualiza a listagem de contatos
+        const itemEl = document.getElementById('chatItem_' + c.id);
+        if (itemEl) {
+          const avatarContainer = itemEl.querySelector('.chat-item-avatar');
+          if (avatarContainer) {
+            avatarContainer.style.background = 'transparent';
+            avatarContainer.innerHTML = `<img src="${c.avatar}" alt="" onerror="this.parentElement.textContent='${(c.name||'?')[0].toUpperCase()}'; this.parentElement.style.background=typeof avatarColor==='function'?avatarColor('${c.name||'?'}'):'#ccc';">`;
+          }
+        }
+        
+        // Atualiza chat atual se estiver aberto
+        if (typeof currentChat !== 'undefined' && currentChat && currentChat.id === c.id) {
+          if (typeof setAvatarEl === 'function') {
+            const el1 = document.getElementById('chatAvatar');
+            const el2 = document.getElementById('detailsAvatar');
+            if (el1) setAvatarEl(el1, c.avatar, c.name);
+            if (el2) setAvatarEl(el2, c.avatar, c.name);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Erro ao buscar foto WAHA para', c.phone, err);
+  }
+}
+
 function renderChatList(contacts) {
   const list = document.getElementById('chatList');
   list.innerHTML = '';
@@ -722,6 +773,9 @@ function renderChatList(contacts) {
       <div class="chat-item-meta">${unreadBadge}</div>
     `;
     list.appendChild(item);
+    
+    // Busca a foto de perfil em segundo plano
+    fetchWahaAvatar(c);
   });
 }
 
