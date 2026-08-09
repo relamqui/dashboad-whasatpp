@@ -665,7 +665,7 @@ async function fetchWahaAvatar(c) {
           const avatarContainer = itemEl.querySelector('.chat-item-avatar');
           if (avatarContainer) {
             avatarContainer.style.background = 'transparent';
-            avatarContainer.innerHTML = `<img src="${c.avatar}" alt="" onerror="this.parentElement.textContent='${(c.name||'?')[0].toUpperCase()}'; this.parentElement.style.background=typeof avatarColor==='function'?avatarColor('${c.name||'?'}'):'#ccc';">`;
+            avatarContainer.innerHTML = `<img src="${c.avatar}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="" onerror="this.parentElement.textContent='${(c.name||'?')[0].toUpperCase()}'; this.parentElement.style.background=typeof avatarColor==='function'?avatarColor('${c.name||'?'}'):'#ccc';">`;
           }
         }
         
@@ -756,7 +756,7 @@ function renderChatList(contacts) {
     let tagsHtml = visibleTags.map(t => `<span class="chat-list-tag ${t.cls}">${escapeHtml(t.label)}</span>`).join('');
 
     const avatarHtml = (c.avatar && c.avatar.startsWith('http'))
-      ? `<img src="${c.avatar}" alt="" onerror="this.parentElement.textContent='${(c.name||'?')[0].toUpperCase()}'">`
+      ? `<img src="${c.avatar}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="" onerror="this.parentElement.textContent='${(c.name||'?')[0].toUpperCase()}'">`
       : (c.avatar || (c.name||'?')[0].toUpperCase());
     const avatarBg = (c.avatar && c.avatar.startsWith('http')) ? 'transparent' : avatarColor(c.name);
     item.innerHTML = `
@@ -2751,7 +2751,7 @@ function setAvatarEl(el, avatar, name) {
   if (!el) return;
   const letter = (name || '?')[0].toUpperCase();
   if (avatar && avatar.startsWith('http')) {
-    el.innerHTML = `<img src="${avatar}" alt="" onerror="this.parentElement.innerHTML='${letter}'; this.parentElement.style.background='${avatarColor(name||'?')}'">`;
+    el.innerHTML = `<img src="${avatar}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="" onerror="this.parentElement.innerHTML='${letter}'; this.parentElement.style.background='${avatarColor(name||'?')}'">`;
     el.style.background = 'transparent';
   } else {
     el.innerHTML = avatar || letter;
