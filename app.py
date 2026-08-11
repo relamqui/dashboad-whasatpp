@@ -3645,6 +3645,11 @@ def create_contact():
     if len(phone) < 12 or len(phone) > 13:
         return jsonify({'error': 'Formato inválido! Insira DDI + DDD + Número (Ex: 5535999888777)'}), 400
         
+    valid_phone = get_valid_waha_number(phone, instance, WAHA_API_URL, get_waha_headers())
+    if not valid_phone:
+        return jsonify({'error': 'Este número não possui WhatsApp ativo ou é inválido.'}), 400
+    phone = valid_phone
+        
     contact_id = f"c_{phone}_{instance}"
     
     contact = Contact.query.filter_by(id=contact_id).first()
