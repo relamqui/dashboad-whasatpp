@@ -32,51 +32,78 @@ WAHA_API_URL = os.getenv('WAHA_API_URL', 'http://localhost:3000').rstrip('/')
 WAHA_API_KEY = os.getenv('WAHA_API_KEY', '')
 
 
-def get_valid_waha_number(number, session, waha_url, headers):
+def get_valid_waha_number(number, session, waha_base_url, headers):
+    """Verifica via check-exists qual formato do número tem WhatsApp ativo.
+    Tenta primeiro o número como está no banco (sem o 9), depois tenta com o 9.
+    Retorna o número válido ou None se nenhum formato existir.
+    """
     import requests
+    # Usar sempre a URL base do WAHA (variável de ambiente), não extrair do endpoint de envio
+    base = waha_base_url.rstrip('/')
+    # Garantir que usamos apenas scheme://host sem sub-paths do endpoint
     from urllib.parse import urlparse
-    parsed_url = urlparse(waha_url)
-    check_exists_url = f"{parsed_url.scheme}://{parsed_url.netloc}/api/contacts/check-exists"
-    
+    parsed = urlparse(base)
+    check_exists_url = f"{parsed.scheme}://{parsed.netloc}/api/contacts/check-exists"
+
     def check_number(num):
         try:
-            chk_res = requests.get(check_exists_url, params={"phone": num, "session": session}, headers=headers, timeout=10)
+            chk_res = requests.get(
+                check_exists_url,
+                params={"phone": num, "session": session},
+                headers=headers,
+                timeout=10
+            )
             if chk_res.status_code == 200:
-                return chk_res.json().get("numberExists", False)
-            return True
-        except Exception:
-            return True
+                exists = chk_res.json().get("numberExists", False)
+                print(f"[CHECK-EXISTS] {num} → numberExists={exists}")
+                return exists
+            # Status != 200: considerar como falha (não assumir que existe)
+            print(f"[CHECK-EXISTS] {num} → HTTP {chk_res.status_code}, considerando False")
+            return False
+        except Exception as e:
+            # Em caso de falha de rede/timeout, considerar False para não enviar com número errado
+            print(f"[CHECK-EXISTS] {num} → Exceção: {e}, considerando False")
+            return False
 
+    # Número BR com 12 dígitos (55 + DDD + 8 dígitos): sem o 9
     if len(number) == 12 and number.startswith("55"):
         if check_number(number):
             return number
-        number_13 = number[:4] + "9" + number[4:]
+        number_13 = number[:4] + "9" + number[4:]  # adiciona o 9 → 13 dígitos
         if check_number(number_13):
             return number_13
         return None
+
+    # Número BR com 13 dígitos (55 + DDD + 9 + 8 dígitos): com o 9
     elif len(number) == 13 and number.startswith("55"):
         if check_number(number):
             return number
-        number_12 = number[:4] + number[5:]
+        number_12 = number[:4] + number[5:]  # remove o 9 → 12 dígitos
         if check_number(number_12):
             return number_12
         return None
-    
+
+    # Outros formatos: verificar como está
     if check_number(number):
         return number
     return None
 
 def waha_post_with_fallback(url, payload, headers, timeout=30):
+    """Envia mensagem via WAHA verificando antes com check-exists qual formato
+    de número é válido (com ou sem o 9° dígito BR). Retorna erro 400 se o
+    número não possuir WhatsApp ativo em nenhum formato.
+    """
     import copy, requests, json
     chat_id = payload.get("chatId", "")
     session = payload.get("session", "")
-    
+
     if "@c.us" not in chat_id or not session:
         return requests.post(url, json=payload, headers=headers, timeout=timeout)
-        
+
     number = chat_id.replace("@c.us", "")
-    final_number = get_valid_waha_number(number, session, url, headers)
-            
+    # Passar WAHA_API_URL (base) em vez da URL do endpoint de envio
+    final_number = get_valid_waha_number(number, session, WAHA_API_URL, headers)
+
     class MockResponse:
         def __init__(self, status_code, text):
             self.status_code = status_code
@@ -88,15 +115,17 @@ def waha_post_with_fallback(url, payload, headers, timeout=30):
                 raise Exception(self.text)
 
     if not final_number:
-        return MockResponse(400, '{"message": "O número não possui WhatsApp ativo."}')
-            
+        print(f"[SEND] Número {number} não possui WhatsApp ativo em nenhum formato.")
+        return MockResponse(400, '{"message": "Número não possui WhatsApp ativo. Verifique o número e tente novamente."}')
+
     payload_final = copy.deepcopy(payload)
     payload_final["chatId"] = f"{final_number}@c.us"
-    
+    print(f"[SEND] Usando número validado: {final_number}@c.us (original: {number})")
+
     reply_to = payload_final.get("reply_to")
     if reply_to and not reply_to.startswith("true_") and not reply_to.startswith("false_"):
         payload_final["reply_to"] = f"true_{final_number}@c.us_{reply_to}"
-        
+
     return requests.post(url, json=payload_final, headers=headers, timeout=timeout)
 
 def get_waha_headers():
