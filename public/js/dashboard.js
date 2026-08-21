@@ -1058,13 +1058,18 @@ function renderMessages(messages) {
         const ref = messageContent.replace('[AUDIO_REF] ', '');
         const [audioInstance, audioMsgId] = ref.split('|');
         const audioSrc = msg.minio_url ? msg.minio_url : `${API_URL}/api/media/audio?instance=${encodeURIComponent(audioInstance)}&msg_id=${encodeURIComponent(audioMsgId)}&token=${encodeURIComponent(authToken)}`;
-        const avatarLetter = (currentChat?.name || '?')[0].toUpperCase();
         const isOut = msg.type === 'out';
+        // Avatar: atendente (out) usa inicial do usuário logado; cliente (in) usa inicial do contato
+        const _userData = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
+        const avatarLetter = isOut
+            ? (_userData.name || '?')[0].toUpperCase()
+            : (currentChat?.name || '?')[0].toUpperCase();
         messageContent = buildWaAudioHTML(audioSrc, avatarLetter, isOut);
     } else if (messageContent.startsWith('[AUDIO_LOCAL] ')) {
         // Áudio gravado localmente — usa data URL diretamente
         const localSrc = messageContent.replace('[AUDIO_LOCAL] ', '');
-        const avatarLetter = (currentChat?.name || '?')[0].toUpperCase();
+        const _userData2 = JSON.parse(localStorage.getItem('wp_crm_user') || '{}');
+        const avatarLetter = (_userData2.name || '?')[0].toUpperCase();
         messageContent = buildWaAudioHTML(localSrc, avatarLetter, true);
     } else if (messageContent.startsWith('[AUDIO] ')) {
         const rawSrc = messageContent.replace('[AUDIO] ', '');
@@ -1738,8 +1743,9 @@ async function sendAudioMessage(base64Data) {
     const realId = data.msg_id || data.key?.id;
     if (realId) {
       newMsg.id = realId;
-      // KEEP [AUDIO_LOCAL] — the base64 data plays correctly in the browser
-      // Don't switch to [AUDIO_REF] because the server proxy may not have it yet
+      // Atualiza o texto para [AUDIO_REF] — garante reprodução após reload via MinIO/proxy.
+      // O player atual já está rodando com o base64 local (não sofre interrupção).
+      newMsg.text = `[AUDIO_REF] ${targetInstance}|${realId}`;
       renderMessages(currentChat.messages);
       _pendingAudioIds.add(realId); // Mark to skip socket duplicate
     }

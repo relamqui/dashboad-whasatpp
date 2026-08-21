@@ -1889,7 +1889,7 @@ def send_audio():
 
         url = f"{WAHA_API_URL}/api/sendVoice"
         payload = {
-            "session": "corpal",
+            "session": inst,
             "chatId": f"{number}@c.us",
             "file": {
                 "mimetype": mimetype,
