@@ -226,7 +226,7 @@
   window.onload = () => {
     if (!tok()) { location.href = 'index.html'; return; }
     const today = new Date().toISOString().split('T')[0];
-    document.getElementById('filterStart').value = `${new Date().getFullYear()}-01-01`;
+    document.getElementById('filterStart').value = today;
     document.getElementById('filterEnd').value   = today;
     loadAll();
   };
