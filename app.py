@@ -6000,6 +6000,15 @@ def on_join_instances(data):
         join_room('admin')
         print('Client joined admin room')
 
+@app.route('/api/debug/tempo')
+def debug_tempo():
+    try:
+        records = db_sql.session.execute(db_sql.text("SELECT id, numero_cliente, nome_atendente, criado_por_atendente, inicio, finalizado FROM tempo_espera ORDER BY id DESC LIMIT 10")).fetchall()
+        data = [dict(r._mapping) for r in records]
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 3008))
     print(f"Servidor Python rodando na porta {port}...")
