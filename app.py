@@ -5720,173 +5720,130 @@ def report_tempo_espera_filiais():
 @auth_required
 @admin_or_gestor_required
 def report_volume_chats_filiais():
-    """Volume de chats criados, fechados e abertos por filial/setor (categorizados por tags)."""
+    """Volume de chats por filial/setor: criados, fechados, em espera e em atendimento."""
     try:
-        filiais_objs = Filial.query.all()
-        valid_filiais = {f.name.lower().strip(): f.name.strip() for f in filiais_objs}
-        
-        def resolve_sf(sf_str):
-            if not sf_str or ':' not in sf_str:
-                return None, None
-            partes = sf_str.split(':', 1)
-            p0 = partes[0].strip()
-            p1 = partes[1].strip()
-            if not p0 or not p1 or p0 == '-' or p1 == '-' or p0.lower() == 'null' or p1.lower() == 'null':
-                return None, None
-            
-            if p0.lower() in valid_filiais:
-                return valid_filiais[p0.lower()], p1 # p0 = filial, p1 = setor
-            elif p1.lower() in valid_filiais:
-                return valid_filiais[p1.lower()], p0 # p1 = filial, p0 = setor
-            else:
-                return p0, p1 # Default assume p0 = filial
-
         start_date = request.args.get('start_date')
         end_date   = request.args.get('end_date')
-        
-        params = {}
-        date_filters = ""
-        if start_date and end_date:
-            params['start_date'] = start_date
-            params['end_date'] = end_date + ' 23:59:59'
-            date_filters = """
-                WHERE (inicio >= :start_date AND inicio <= :end_date)
-                   OR (finalizado >= :start_date AND finalizado <= :end_date)
-                   OR (finalizado IS NULL)
-            """
-        else:
-            date_filters = "WHERE 1=1"
 
-        # Pega criados e fechados no periodo
-        sql = db_sql.text(f"""
-            SELECT setor_filial,
-                   SUM(CASE WHEN inicio >= :start_date AND inicio <= :end_date THEN 1 ELSE 0 END) as criados,
-                   SUM(CASE WHEN finalizado >= :start_date AND finalizado <= :end_date THEN 1 ELSE 0 END) as fechados
+        # ── Seed: todas as filiais e setores cadastrados ───────────────────────
+        filiais_objs = Filial.query.all()
+        setores_objs = Setor.query.all()
+        valid_filiais = {f.name.lower().strip(): f.name.strip() for f in filiais_objs}
+
+        # mapa: setor_id → nome do setor
+        setor_id_map = {s.id: s.name for s in setores_objs}
+
+        # Estrutura: filiais[filial_name][setor_name] = {criados, fechados, espera, atendimento}
+        filiais = {}
+        # Seed a partir dos usuários cadastrados (cada user define filial+setor existentes)
+        users_all = User.query.all()
+        for u in users_all:
+            fn = u.filial or ''
+            sn = u.setor or ''
+            if fn and sn:
+                if fn not in filiais: filiais[fn] = {}
+                if sn not in filiais[fn]: filiais[fn][sn] = {'criados': 0, 'fechados': 0, 'espera': 0, 'atendimento': 0}
+
+        def resolve_sf(sf_str):
+            """Retorna (filial, setor) a partir de string 'Setor:Filial' ou 'Filial:Setor'."""
+            if not sf_str or ':' not in sf_str:
+                return None, None
+            p = sf_str.split(':', 1)
+            p0, p1 = p[0].strip(), p[1].strip()
+            if not p0 or not p1 or p0 == '-' or p1 == '-': return None, None
+            if p0.lower() in valid_filiais:
+                return valid_filiais[p0.lower()], p1
+            elif p1.lower() in valid_filiais:
+                return valid_filiais[p1.lower()], p0
+            return p0, p1  # fallback: assume p0=filial
+
+        def ensure(fn, sn):
+            if fn not in filiais: filiais[fn] = {}
+            if sn not in filiais[fn]: filiais[fn][sn] = {'criados': 0, 'fechados': 0, 'espera': 0, 'atendimento': 0}
+
+        # ── 1. Criados no período ──────────────────────────────────────────────
+        criado_params = {}
+        criado_filter = "WHERE 1=1"
+        if start_date and end_date:
+            criado_filter = "WHERE inicio >= :start_date AND inicio <= :end_date"
+            criado_params = {'start_date': start_date, 'end_date': end_date + ' 23:59:59'}
+        sql_criados = db_sql.text(f"""
+            SELECT setor_filial, COUNT(*) as total
             FROM tempo_espera
-            {date_filters}
+            {criado_filter}
+            AND setor_filial IS NOT NULL AND setor_filial != ''
             GROUP BY setor_filial
         """)
-        rows = db_sql.session.execute(sql, params).fetchall()
+        for row in db_sql.session.execute(sql_criados, criado_params).fetchall():
+            fn, sn = resolve_sf(row[0])
+            if fn and sn:
+                ensure(fn, sn)
+                filiais[fn][sn]['criados'] += int(row[1] or 0)
 
-        filiais = {}
-        for row in rows:
-            sf       = row[0] or '-'
-            if not sf or sf == '-': continue
-            criados  = int(row[1] or 0)
-            fechados = int(row[2] or 0)
-            
-            filial, setor = resolve_sf(sf)
-            if not filial or not setor:
-                continue
-            
-            if filial not in filiais:
-                filiais[filial] = {}
-            if setor not in filiais[filial]:
-                filiais[filial][setor] = {'criados': 0, 'fechados': 0, 'triagem': 0, 'espera': 0, 'atendimento': 0}
-            
-            filiais[filial][setor]['criados'] += criados
-            filiais[filial][setor]['fechados'] += fechados
+        # ── 2. Fechados no período ─────────────────────────────────────────────
+        fech_params = {}
+        fech_filter = "WHERE finalizado IS NOT NULL"
+        if start_date and end_date:
+            fech_filter = "WHERE finalizado >= :start_date AND finalizado <= :end_date"
+            fech_params = {'start_date': start_date, 'end_date': end_date + ' 23:59:59'}
+        sql_fechados = db_sql.text(f"""
+            SELECT setor_filial, COUNT(*) as total
+            FROM tempo_espera
+            {fech_filter}
+            AND setor_filial IS NOT NULL AND setor_filial != ''
+            GROUP BY setor_filial
+        """)
+        for row in db_sql.session.execute(sql_fechados, fech_params).fetchall():
+            fn, sn = resolve_sf(row[0])
+            if fn and sn:
+                ensure(fn, sn)
+                filiais[fn][sn]['fechados'] += int(row[1] or 0)
 
-        # Agora pega a fila de ESPERA (tempo_espera sem atendente)
+        # ── 3. Em Espera agora (aguardando atendente) ──────────────────────────
         sql_espera = db_sql.text("""
             SELECT setor_filial, COUNT(*) as qtd
             FROM tempo_espera
             WHERE finalizado IS NULL AND atendido IS NULL
+            AND setor_filial IS NOT NULL AND setor_filial != ''
             GROUP BY setor_filial
         """)
-        espera_rows = db_sql.session.execute(sql_espera).fetchall()
-        for row in espera_rows:
-            sf = row[0] or '-'
-            if not sf or sf == '-': continue
-            qtd = int(row[1] or 0)
-            
-            filial, setor = resolve_sf(sf)
-            if not filial or not setor:
-                continue
-            
-            if filial not in filiais: filiais[filial] = {}
-            if setor not in filiais[filial]: filiais[filial][setor] = {'criados': 0, 'fechados': 0, 'triagem': 0, 'espera': 0, 'atendimento': 0}
-            filiais[filial][setor]['espera'] += qtd
+        for row in db_sql.session.execute(sql_espera).fetchall():
+            fn, sn = resolve_sf(row[0])
+            if fn and sn:
+                ensure(fn, sn)
+                filiais[fn][sn]['espera'] += int(row[1] or 0)
 
-        # Pega a fila de ATENDIMENTO (atendimentos_chat com status='atendente')
-        sql_atend = db_sql.text("""
-            SELECT ultimo_setor, COUNT(*) as qtd
-            FROM atendimentos_chat
-            WHERE status = 'atendente'
-            GROUP BY ultimo_setor
-        """)
-        atend_rows = db_sql.session.execute(sql_atend).fetchall()
-        for row in atend_rows:
-            sf = row[0] or '-'
-            if not sf or sf == '-': continue
-            qtd = int(row[1] or 0)
-            
-            filial, setor = resolve_sf(sf)
-            if not filial or not setor:
-                continue
-            
-            if filial not in filiais: filiais[filial] = {}
-            if setor not in filiais[filial]: filiais[filial][setor] = {'criados': 0, 'fechados': 0, 'triagem': 0, 'espera': 0, 'atendimento': 0}
-            filiais[filial][setor]['atendimento'] += qtd
-            
-        # Para TRIAGEM (BOT), usamos a tag BOT nos contatos que NAO estao em atendimento nem em espera.
-        # Devido ao volume, podemos buscar contatos com tag BOT que tiveram mensagem hoje (ativo).
-        hoje = get_now_sp().strftime('%d/%m/%Y')
-        # Uma aproximação para triagem (já que a tabela não tem state exclusivo pra isso sem estar fechado)
-        sql_triagem = db_sql.text("""
-            SELECT tags 
-            FROM contacts 
-            WHERE unread > 0 OR last_msg_time LIKE :hoje
-        """)
-        try:
-            triagem_rows = db_sql.session.execute(sql_triagem, {'hoje': f"{hoje}%"}).fetchall()
-            for r in triagem_rows:
-                tags = r[0]
-                if tags:
-                    if type(tags) == str:
-                        import json
-                        try: tags = json.loads(tags)
-                        except: tags = []
-                    
-                    has_bot = any(str(t).strip().upper() == 'BOT' for t in tags)
-                    has_att = any(str(t).strip().lower().startswith('atendente:') for t in tags)
-                    
-                    if has_bot and not has_att:
-                        # Achou um em triagem. O setor muitas vezes ainda nao existe (está no menu).
-                        # Vamos colocar em Geral/Triagem
-                        sf = 'Triagem:Geral'
-                        partes = sf.split(':', 1)
-                        setor = partes[0].strip()
-                        filial = partes[1].strip()
-                        if filial not in filiais: filiais[filial] = {}
-                        if setor not in filiais[filial]: filiais[filial][setor] = {'criados': 0, 'fechados': 0, 'triagem': 0, 'espera': 0, 'atendimento': 0}
-                        filiais[filial][setor]['triagem'] += 1
-        except:
-            pass
+        # ── 4. Em Atendimento agora: contatos com tag "Atendente:" + tag Filial:Setor ─
+        all_contacts = Contact.query.with_entities(Contact.tags).all()
+        for (ctags,) in all_contacts:
+            if not ctags: continue
+            tag_list = ctags if isinstance(ctags, list) else []
+            has_att = any(isinstance(t, str) and t.strip().lower().startswith('atendente:') for t in tag_list)
+            if not has_att: continue
+            for t in tag_list:
+                if isinstance(t, str) and ':' in t and not t.strip().lower().startswith('atendente:'):
+                    fn, sn = resolve_sf(t)
+                    if fn and sn:
+                        ensure(fn, sn)
+                        filiais[fn][sn]['atendimento'] += 1
+                        break
 
+        # ── Monta resultado ────────────────────────────────────────────────────
         result = []
-        for filial, setores_dict in filiais.items():
+        for fn, setores_dict in filiais.items():
             setores_list = []
-            for setor, stats in setores_dict.items():
-                setores_list.append({
-                    'setor': setor,
-                    'criados': stats['criados'],
-                    'fechados': stats['fechados'],
-                    'triagem': stats['triagem'],
-                    'espera': stats['espera'],
-                    'atendimento': stats['atendimento']
-                })
-            setores_list.sort(key=lambda x: -x['criados'])
+            for sn, stats in setores_dict.items():
+                setores_list.append({'setor': sn, **stats})
+            setores_list.sort(key=lambda x: (-x['criados'], x['setor']))
             result.append({
-                'filial': filial,
-                'criados': sum(s['criados'] for s in setores_list),
-                'fechados': sum(s['fechados'] for s in setores_list),
-                'triagem': sum(s['triagem'] for s in setores_list),
-                'espera': sum(s['espera'] for s in setores_list),
-                'atendimento': sum(s['atendimento'] for s in setores_list),
-                'setores': setores_list
+                'filial':       fn,
+                'criados':      sum(s['criados'] for s in setores_list),
+                'fechados':     sum(s['fechados'] for s in setores_list),
+                'espera':       sum(s['espera'] for s in setores_list),
+                'atendimento':  sum(s['atendimento'] for s in setores_list),
+                'setores':      setores_list
             })
-        result.sort(key=lambda x: -x['criados'])
+        result.sort(key=lambda x: (-x['criados'], x['filial']))
         return jsonify({'success': True, 'data': result}), 200
     except Exception as e:
         import traceback

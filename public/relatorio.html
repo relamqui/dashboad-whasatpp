@@ -486,28 +486,59 @@
       if(!r.ok||!j.success){el.innerHTML=errH(j.error||'Erro');return;}
       const d = j.data||[];
       if(!d.length){el.innerHTML=empH('Nenhum registro encontrado.');return;}
-      el.innerHTML = d.map((f,fi)=>{
-        const setoresHtml = f.setores.map(s=>{
-          return '<div class="setor-card"><div class="setor-card-header"><div><div class="setor-name">'+s.setor+'</div><div class="setor-meta">Total no período</div></div></div>'
-            +'<div class="tempo-row"><span class="tempo-label">📥 Criados no dia</span><span class="tempo-value" style="color:var(--blue)">'+s.criados+'</span></div>'
-            +'<div class="tempo-row"><span class="tempo-label">✅ Fechados no dia</span><span class="tempo-value" style="color:var(--green)">'+s.fechados+'</span></div>'
-            +'<div class="tempo-row"><span class="tempo-label">🤖 Em Triagem (Bot)</span><span class="tempo-value" style="color:var(--purple)">'+s.triagem+'</span></div>'
-            +'<div class="tempo-row"><span class="tempo-label">⏳ Em Espera (Fila)</span><span class="tempo-value" style="color:var(--yellow)">'+s.espera+'</span></div>'
-            +'<div class="tempo-row"><span class="tempo-label">🟢 Em Atendimento</span><span class="tempo-value" style="color:var(--green)">'+s.atendimento+'</span></div>'
-            +'</div>';
-        }).join('');
+
+      // Add CSS for filter inputs if not added yet
+      if (!document.getElementById('col-filter-style')) {
+        const s = document.createElement('style');
+        s.id = 'col-filter-style';
+        s.textContent = '.col-filter{background:var(--card-bg,#1e1e2e);color:var(--text-primary);border:1px solid var(--border,#333);border-radius:6px;padding:4px 8px;font-size:12px;outline:none;} .col-filter:focus{border-color:var(--purple,#9b59b6);}';
+        document.head.appendChild(s);
+      }
+
+      el.innerHTML = d.map((f, fi) => {
+        const filterId = `vf-filter-${fi}`;
+        const tbodyId  = `vf-tbody-${fi}`;
+        const setores  = f.setores || [];
+
+        function setor_rows(data) {
+          if (!data.length) return '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:12px">Sem dados</td></tr>';
+          return data.map(s =>
+            '<tr>'
+            +'<td><span class="att-name">'+s.setor+'</span></td>'
+            +'<td><span class="tempo-value" style="color:var(--blue)">'+s.criados+'</span></td>'
+            +'<td><span class="tempo-value" style="color:var(--green)">'+s.fechados+'</span></td>'
+            +'<td><span class="tempo-value" style="color:var(--yellow)">'+s.espera+'</span></td>'
+            +'<td><span class="tempo-value" style="color:#2ecc71">'+s.atendimento+'</span></td>'
+            +'</tr>'
+          ).join('');
+        }
+
         return '<div class="filial-block" id="vf'+fi+'">'
           +'<div class="filial-header" onclick="tog(\'vf'+fi+'\')">'
-          +'<div class="filial-header-left"><div class="filial-icon vi">🏢</div><div><div class="filial-name">'+f.filial+'</div><div class="filial-meta">'+f.setores.length+' setor(es)</div></div></div>'
+          +'<div class="filial-header-left"><div class="filial-icon vi">🏢</div><div>'
+          +'<div class="filial-name">'+f.filial+'</div>'
+          +'<div class="filial-meta">'+f.setores.length+' setor(es)</div>'
+          +'</div></div>'
           +'<div class="filial-header-right">'
           +'<div class="stat-inline"><div class="stat-val tempo-value" style="color:var(--blue)">📥 '+f.criados+'</div><div class="stat-lbl">Criados</div></div>'
           +'<div class="stat-inline"><div class="stat-val tempo-value" style="color:var(--green)">✅ '+f.fechados+'</div><div class="stat-lbl">Fechados</div></div>'
-          +'<div class="stat-inline" style="border-left:1px solid rgba(255,255,255,.1); padding-left:15px; margin-left:5px;"></div>'
-          +'<div class="stat-inline"><div class="stat-val tempo-value" style="color:var(--purple)">🤖 '+f.triagem+'</div><div class="stat-lbl">Triagem</div></div>'
-          +'<div class="stat-inline"><div class="stat-val tempo-value" style="color:var(--yellow)">⏳ '+f.espera+'</div><div class="stat-lbl">Espera</div></div>'
-          +'<div class="stat-inline"><div class="stat-val tempo-value" style="color:var(--green)">🟢 '+f.atendimento+'</div><div class="stat-lbl">Atendimento</div></div>'
+          +'<div class="stat-inline"><div class="stat-val tempo-value" style="color:var(--yellow)">⏳ '+f.espera+'</div><div class="stat-lbl">Em Espera</div></div>'
+          +'<div class="stat-inline"><div class="stat-val tempo-value" style="color:#2ecc71">🟢 '+f.atendimento+'</div><div class="stat-lbl">Em Atendimento</div></div>'
           +chv()+'</div></div>'
-          +'<div class="filial-body"><div class="setores-grid">'+setoresHtml+'</div></div></div>';
+          +'<div class="filial-body">'
+          +'<div style="padding:8px 0 4px">'
+          +'<input id="'+filterId+'" class="col-filter" placeholder="🔍 Filtrar setor..." style="width:260px" oninput="(function(v){const tb=document.getElementById(\''+tbodyId+'\');const rows='+JSON.stringify(setores)+';const f=rows.filter(s=>s.setor.toLowerCase().includes(v.toLowerCase()));tb.innerHTML=f.length?f.map(s=>\'<tr><td><span class=att-name>\'+s.setor+\'</span></td><td><span class=tempo-value style=color:var(--blue)>\'+s.criados+\'</span></td><td><span class=tempo-value style=color:var(--green)>\'+s.fechados+\'</span></td><td><span class=tempo-value style=color:var(--yellow)>\'+s.espera+\'</span></td><td><span class=tempo-value style=color:#2ecc71>\'+s.atendimento+\'</span></td></tr>\').join(\'\'):\'<tr><td colspan=5 style=text-align:center;color:var(--text-secondary);padding:12px>Sem resultados</td></tr>\'})(this.value)">'
+          +'</div>'
+          +'<table class="rtable"><thead><tr>'
+          +'<th>Setor</th>'
+          +'<th title="Chats novos que entraram nesta fila no período">📥 Criados</th>'
+          +'<th title="Chats finalizados no período">✅ Fechados</th>'
+          +'<th title="Aguardando atendente agora">⏳ Em Espera</th>'
+          +'<th title="Em atendimento ativo agora">🟢 Em Atendimento</th>'
+          +'</tr></thead>'
+          +'<tbody id="'+tbodyId+'">'+setor_rows(setores)+'</tbody>'
+          +'</table>'
+          +'</div></div>';
       }).join('');
     } catch(e){el.innerHTML=errH('Erro de conexão.');}
   }
