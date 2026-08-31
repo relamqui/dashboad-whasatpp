@@ -5860,7 +5860,7 @@ def report_volume_chats_atendentes():
         end_date   = request.args.get('end_date')
 
         # ── 1. Todos os usuários (atendentes) cadastrados ──────────────────────
-        users = User.query.filter(User.role.in_(['user', 'gestor'])).all()
+        users = User.query.all()
         email_to_name = {u.email.lower(): u.name for u in users if u.email}
 
         atendentes_map = {}
