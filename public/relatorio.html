@@ -270,6 +270,10 @@
     } catch(e) { return dStr; }
   }
   function fmtS(s) { if(!s||s<=0) return '—'; s=Math.round(s); const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60; if(h>0)return h+'h '+m+'m'; if(m>0)return m+'m '+sc+'s'; return sc+'s'; }
+  function fmtChat(s) {
+    if (s === null || s === undefined) return '<span class="tempo-value" style="color:var(--cyan)">🟢 Em atendimento</span>';
+    return '<span class="tempo-value '+spC(s)+'">'+fmtS(s)+'</span>';
+  }
   function spC(s) { if(!s||s<=0)return''; if(s<120)return'fast'; if(s<600)return'medium'; return'slow'; }
   function scC(s,a) { const mx=Math.max(...a),p=mx>0?s/mx:0; if(p>=.75)return'top'; if(p>=.5)return'mid'; if(p>=.25)return'low'; return'bot'; }
   function npsC(s) { if(s>=75)return'excelente'; if(s>=50)return'bom'; if(s>=0)return'neutro'; return'ruim'; }
@@ -469,7 +473,7 @@
                   <td style="font-weight:600">${esc(r.cliente)}</td>
                   <td>${esc(fmtD(r.data))}</td>
                   <td><span class="tempo-value ${spC(r.espera_seg)}">${fmtS(r.espera_seg)}</span></td>
-                  <td><span class="tempo-value ${spC(r.chat_seg)}">${fmtS(r.chat_seg)}</span></td>
+                  <td>${fmtChat(r.chat_seg)}</td>
                   <td>${esc(r.setor_filial)}</td>
                   <td><a href="dashboard.html?phone=${encodeURIComponent(String(r.cliente||'').replace(/\D/g,''))}" target="_blank" style="display:inline-block; padding:6px 12px; background:var(--bg-card); border:1px solid var(--border); color:var(--text-primary); text-decoration:none; border-radius:6px; font-size:0.85rem; transition:0.2s;">💬 Ir para conversa</a></td>
                 </tr>`).join('')}
