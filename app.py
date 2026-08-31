@@ -5929,7 +5929,8 @@ def report_volume_chats_atendentes():
             tag_list = ctags if isinstance(ctags, list) else []
             for t in tag_list:
                 if isinstance(t, str) and t.strip().lower().startswith('atendente:'):
-                    nome = t.split(':', 1)[1].strip()
+                    nome_raw = t.split(':', 1)[1].strip()
+                    nome = resolve_name(nome_raw)
                     key  = nome.lower()
                     if key not in atendentes_map:
                         atendentes_map[key] = {'nome': nome, 'filial': '-', 'setor': '-', 'criados': 0, 'fechados': 0, 'atendimentos': 0}
