@@ -212,7 +212,7 @@
   <div class="main-tab-content" id="main-content-volume">
     <div class="sub-tabs">
       <button class="sub-tab-btn active-volume" id="volume-sub-filiais" onclick="switchSub('volume','filiais')">🏢 Por Filial / Setor</button>
-      <button class="sub-tab-btn" id="volume-sub-atendentes" onclick="switchSub('volume','atendentes')">🧑‍💼 Ranking Atendentes</button>
+      <button class="sub-tab-btn" id="volume-sub-atendentes" onclick="switchSub('volume','atendentes')">🧑‍💼 Atendentes</button>
     </div>
     <div class="sub-tab-content active" id="volume-content-filiais"><div id="volume-filiais-box"><div class="spinner volume-spin"></div></div></div>
     <div class="sub-tab-content" id="volume-content-atendentes"><div id="volume-atendentes-box"><div class="spinner volume-spin"></div></div></div>
@@ -521,18 +521,75 @@
       const j = await r.json();
       if(!r.ok||!j.success){el.innerHTML=errH(j.error||'Erro');return;}
       const d = j.data||[];
-      if(!d.length){el.innerHTML=empH('Nenhum registro encontrado.');return;}
-      el.innerHTML='<div class="ranking-table-wrap"><table class="rtable"><thead><tr>'
-        +'<th>Posição</th><th>Atendente</th><th>Filial</th><th>📥 Criados no Dia</th><th>✅ Fechados no Dia</th><th>🟢 Em Atendimento (Agora)</th>'
-        +'</tr></thead><tbody>'+d.map((r,i)=>'<tr>'
-          +'<td><div class="rank-pos"><span class="medal">'+(medals[i]||'')+'</span><span>#'+(i+1)+'</span></div></td>'
-          +'<td><div class="att-info"><span class="att-name">'+r.atendente+'</span><span class="att-sub">'+r.setor+'</span></div></td>'
-          +'<td style="color:var(--text-secondary)">'+r.filial+'</td>'
-          +'<td><span class="tempo-value" style="color:var(--blue)">'+r.criados+'</span></td>'
-          +'<td><span class="tempo-value" style="color:var(--green)">'+r.fechados+'</span></td>'
-          +'<td><span class="tempo-value" style="color:var(--yellow)">'+r.abertos+'</span></td>'
-          +'</tr>').join('')
-        +'</tbody></table></div>';
+      if(!d.length){el.innerHTML=empH('Nenhum atendente encontrado.');return;}
+
+      // State for column filters
+      const filters = {atendente:'', filial:'', setor:'', criados:'', fechados:'', atendimentos:''};
+
+      function renderTable(data) {
+        const filtered = data.filter(r => {
+          return (!filters.atendente || r.atendente.toLowerCase().includes(filters.atendente.toLowerCase()))
+            && (!filters.filial || r.filial.toLowerCase().includes(filters.filial.toLowerCase()))
+            && (!filters.setor  || r.setor.toLowerCase().includes(filters.setor.toLowerCase()))
+            && (!filters.criados || String(r.criados).includes(filters.criados))
+            && (!filters.fechados || String(r.fechados).includes(filters.fechados))
+            && (!filters.atendimentos || String(r.atendimentos).includes(filters.atendimentos));
+        });
+
+        const tbody = document.getElementById('vol-att-tbody');
+        if (!tbody) return;
+        tbody.innerHTML = filtered.length === 0
+          ? '<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);padding:24px">Nenhum resultado</td></tr>'
+          : filtered.map(r =>
+              '<tr>'
+              +'<td><div class="att-info"><span class="att-name">'+r.atendente+'</span><span class="att-sub">'+r.setor+'</span></div></td>'
+              +'<td style="color:var(--text-secondary)">'+r.filial+'</td>'
+              +'<td><span class="tempo-value" style="color:var(--blue)">'+r.criados+'</span></td>'
+              +'<td><span class="tempo-value" style="color:var(--green)">'+r.fechados+'</span></td>'
+              +'<td><span class="tempo-value" style="color:var(--yellow)">'+r.atendimentos+'</span></td>'
+              +'</tr>'
+            ).join('');
+      }
+
+      el.innerHTML =
+        '<div class="ranking-table-wrap">'
+        +'<table class="rtable" id="vol-att-table">'
+        +'<thead>'
+        +'<tr>'
+        +'<th>Atendente</th><th>Filial</th>'
+        +'<th title="Chats iniciados pelo atendente via \'Nova Conversa\'">📥 Criados</th>'
+        +'<th title="Chats finalizados pelo atendente no período">✅ Fechados</th>'
+        +'<th title="Chats em andamento agora (com a tag do atendente)">🟢 Em Atendimento</th>'
+        +'</tr>'
+        +'<tr id="vol-att-filter-row" style="background:var(--surface)">'
+        +'<td><input class="col-filter" placeholder="🔍 Atendente" data-col="atendente" style="width:100%"></td>'
+        +'<td><input class="col-filter" placeholder="🔍 Filial" data-col="filial" style="width:100%"></td>'
+        +'<td><input class="col-filter" placeholder="🔍" data-col="criados" style="width:60px"></td>'
+        +'<td><input class="col-filter" placeholder="🔍" data-col="fechados" style="width:60px"></td>'
+        +'<td><input class="col-filter" placeholder="🔍" data-col="atendimentos" style="width:60px"></td>'
+        +'</tr>'
+        +'</thead>'
+        +'<tbody id="vol-att-tbody"></tbody>'
+        +'</table>'
+        +'</div>';
+
+      // Add CSS for filter inputs if not added yet
+      if (!document.getElementById('col-filter-style')) {
+        const s = document.createElement('style');
+        s.id = 'col-filter-style';
+        s.textContent = '.col-filter{background:var(--card-bg,#1e1e2e);color:var(--text-primary);border:1px solid var(--border,#333);border-radius:6px;padding:4px 8px;font-size:12px;outline:none;} .col-filter:focus{border-color:var(--purple,#9b59b6);}';
+        document.head.appendChild(s);
+      }
+
+      // Bind filter inputs
+      document.querySelectorAll('#vol-att-filter-row .col-filter').forEach(inp => {
+        inp.addEventListener('input', e => {
+          filters[e.target.dataset.col] = e.target.value;
+          renderTable(d);
+        });
+      });
+
+      renderTable(d);
     } catch(e){el.innerHTML=errH('Erro de conexão.');}
   }
 </script>

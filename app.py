@@ -364,6 +364,7 @@ class TempoEspera(db_sql.Model):
     inicio = db_sql.Column(db_sql.DateTime, nullable=False, default=get_now_sp)
     atendido = db_sql.Column(db_sql.DateTime, nullable=True)
     finalizado = db_sql.Column(db_sql.DateTime, nullable=True)
+    criado_por_atendente = db_sql.Column(db_sql.String(100), nullable=True)  # Preenchido quando o atendente cria via 'Nova Conversa'
 
 class MediaFile(db_sql.Model):
     __tablename__ = 'media_file'
@@ -612,15 +613,16 @@ def track_sla_event(numero, filial=None, setor=None, atendente=None, event_type=
             
         elif sla:
             if event_type == 'ASSIGNED':
-                sla.atendente = atendente
-                sla.assumido_em = now_iso
-                if sla.entrou_na_fila_em:
-                    dt_fila = datetime.datetime.fromisoformat(sla.entrou_na_fila_em)
-                    sla.tempo_na_fila_segundos = int((get_now() - dt_fila).total_seconds())
+                if not sla.assumido_em:
+                    sla.atendente = atendente
+                    sla.assumido_em = now_iso
+                    if sla.entrou_na_fila_em:
+                        dt_fila = datetime.datetime.fromisoformat(sla.entrou_na_fila_em)
+                        sla.tempo_na_fila_segundos = int((get_now() - dt_fila).total_seconds())
                     
             elif event_type == 'CLIENT_MSG':
                 # Só registra se já foi assumido por alguém
-                if sla.assumido_em:
+                if sla.assumido_em and not sla.ultimo_horario_mensagem_cliente:
                     sla.ultimo_horario_mensagem_cliente = now_iso
                     
             elif event_type == 'ATTENDANT_MSG':
@@ -670,6 +672,13 @@ def migrate_to_sql():
         # Add finalizado column to tempo_espera (TIMESTAMP funciona no SQLite e PostgreSQL)
         try:
             db_sql.session.execute(db_sql.text('ALTER TABLE tempo_espera ADD COLUMN finalizado TIMESTAMP'))
+            db_sql.session.commit()
+        except Exception:
+            db_sql.session.rollback()
+
+        # Add criado_por_atendente column to tempo_espera
+        try:
+            db_sql.session.execute(db_sql.text('ALTER TABLE tempo_espera ADD COLUMN criado_por_atendente VARCHAR(100)'))
             db_sql.session.commit()
         except Exception:
             db_sql.session.rollback()
@@ -1046,9 +1055,15 @@ def add_bot_tag():
                 print(f"[BOT/TAGS] Removendo tag antiga: {old_tag}")
             current_tags.append(new_ftag)
             added = True
-            
             # Registra no SLA que o chat entrou na fila deste setor
             track_sla_event(phone, filial=filial, setor=setor, event_type='QUEUE_ENTER')
+            
+            # Como o cliente mudou de setor na fila (ou acabou de ser alocado em um), 
+            # apagamos qualquer TempoEspera pendente antigo, para que o timer reinicie
+            try:
+                TempoEspera.query.filter_by(numero_cliente=phone, atendido=None).delete()
+            except Exception as e_del:
+                print(f"[BOT/TAGS] Erro ao deletar espera anterior: {e_del}")
     elif filial:
         if filial not in current_tags:
             current_tags.append(filial)
@@ -2693,13 +2708,29 @@ def wait_time_monitor_loop():
                                 _inicio_nps = pytz.timezone('America/Sao_Paulo').localize(_inicio_nps)
                             _elapsed = (agora_nps - _inicio_nps).total_seconds()
                             if _elapsed >= 300:  # 5 minutos
+                                # Busca filial do usuário
+                                _f_nps = None
+                                _s_nps = _n.ultimo_setor
+                                if _n.ultimo_atendente:
+                                    _u_nps = User.query.filter(db_sql.or_(User.name == _n.ultimo_atendente, User.email == _n.ultimo_atendente)).first()
+                                    if _u_nps:
+                                        _f_nps = _u_nps.filial
+                                        if not _f_nps and _u_nps.filial_id:
+                                            _f_obj = Filial.query.get(_u_nps.filial_id)
+                                            if _f_obj: _f_nps = _f_obj.name
+                                        if not _s_nps:
+                                            _s_nps = _u_nps.setor
+                                            if not _s_nps and _u_nps.setor_id:
+                                                _s_obj = Setor.query.get(_u_nps.setor_id)
+                                                if _s_obj: _s_nps = _s_obj.name
+
                                 # Salva no histórico caso já tenha voto mas não motivo
                                 if _n.nps_voto:
                                     _timeout_voto = NpsVoto(
                                         numero_cliente = _n.numero,
                                         atendente      = _n.ultimo_atendente,
-                                        filial         = None,
-                                        setor          = _n.ultimo_setor,
+                                        filial         = _f_nps,
+                                        setor          = _s_nps,
                                         voto           = _n.nps_voto,
                                         motivo         = None,
                                         data_voto      = agora_nps.isoformat()
@@ -2881,35 +2912,10 @@ def webhook():
                     else:
                         _debug_msg = f"DEBUG NPS: Nenhuma sessão 'waiting_vote' encontrada para o número {_vote_phone} (Voto: {_selected}). Tente verificar se o número no banco bate."
                         print(f"[NPS] {_debug_msg}")
-                        requests.post(
-                            f"{WAHA_API_URL}/api/sendText",
-                            headers=get_waha_headers(),
-                            json={
-                                "chatId": f"{_vote_phone}@c.us",
-                                "text": _debug_msg,
-                                "session": _vote_session
-                            },
-                            timeout=5
-                        )
             except Exception as _nps_vote_err:
                 db_sql.session.rollback()
                 _debug_msg = f"DEBUG NPS: Erro interno ao processar poll.vote: {str(_nps_vote_err)}"
                 print(f"[NPS] {_debug_msg}")
-                try:
-                    # Tenta enviar erro pro número que veio no poll, se existir
-                    _err_phone = data.get('payload', {}).get('vote', {}).get('from', '').split('@')[0]
-                    if _err_phone:
-                        requests.post(
-                            f"{WAHA_API_URL}/api/sendText",
-                            headers=get_waha_headers(),
-                            json={
-                                "chatId": f"{_err_phone}@c.us",
-                                "text": _debug_msg,
-                                "session": data.get('session', 'corpal')
-                            },
-                            timeout=5
-                        )
-                except: pass
             return 'OK', 200
         # ─────────────────────────────────────────────────────────────────────
 
@@ -2990,12 +2996,28 @@ def webhook():
                 
                 if _atend_nps_motivo:
                     try:
+                        # Busca filial do usuário
+                        _f_nps = None
+                        _s_nps = _atend_nps_motivo.ultimo_setor
+                        if _atend_nps_motivo.ultimo_atendente:
+                            _u_nps = User.query.filter(db_sql.or_(User.name == _atend_nps_motivo.ultimo_atendente, User.email == _atend_nps_motivo.ultimo_atendente)).first()
+                            if _u_nps:
+                                _f_nps = _u_nps.filial
+                                if not _f_nps and _u_nps.filial_id:
+                                    _f_obj = Filial.query.get(_u_nps.filial_id)
+                                    if _f_obj: _f_nps = _f_obj.name
+                                if not _s_nps:
+                                    _s_nps = _u_nps.setor
+                                    if not _s_nps and _u_nps.setor_id:
+                                        _s_obj = Setor.query.get(_u_nps.setor_id)
+                                        if _s_obj: _s_nps = _s_obj.name
+
                         # Salva voto + motivo no histórico
                         _nps_voto_obj = NpsVoto(
                             numero_cliente = _nps_phone,
                             atendente      = _atend_nps_motivo.ultimo_atendente,
-                            filial         = None,
-                            setor          = _atend_nps_motivo.ultimo_setor,
+                            filial         = _f_nps,
+                            setor          = _s_nps,
                             voto           = _atend_nps_motivo.nps_voto,
                             motivo         = body,
                             data_voto      = get_now().isoformat()
@@ -3766,12 +3788,15 @@ def create_contact():
     # Atualiza tabela atendimentos_chat diretamente para bloquear o bot
     try:
         agora_iso = get_now().isoformat()
+        agora_dt  = get_now_sp()
+        _us_nc = f"{user.setor}:{user.filial}" if (user.setor and user.filial) else (user.setor or user.filial)
         atend_chat = AtendimentoChat.query.filter_by(numero=contact.phone).first()
         if atend_chat:
             status_anterior = atend_chat.status
             atend_chat.atendente = user.name
             atend_chat.status = 'atendente'
             atend_chat.ultimo_atendente = user.name
+            atend_chat.ultimo_setor = _us_nc
             atend_chat.registro_time_chat = agora_iso
             if status_anterior != 'atendente':
                 atend_chat.atendente_desde = agora_iso
@@ -3783,6 +3808,7 @@ def create_contact():
                 status='atendente',
                 atendente=user.name,
                 ultimo_atendente=user.name,
+                ultimo_setor=_us_nc,
                 registro_time_chat=agora_iso,
                 atendente_desde=agora_iso,
                 alerta_20min_enviado=False,
@@ -3794,6 +3820,27 @@ def create_contact():
     except Exception as e_ac:
         db_sql.session.rollback()
         print(f"Erro ao atualizar atendimentos_chat (novo chat): {e_ac}")
+
+    # Registra criação do chat na tabela tempo_espera marcando o criador
+    try:
+        agora_dt = get_now_sp()
+        _us_nc = f"{user.setor}:{user.filial}" if (user.setor and user.filial) else (user.setor or user.filial)
+        # Fecha qualquer ciclo aberto anterior
+        TempoEspera.query.filter_by(numero_cliente=contact.phone, finalizado=None).update({'finalizado': agora_dt})
+        nova_te = TempoEspera(
+            numero_cliente=contact.phone,
+            nome_atendente=user.name,
+            setor_filial=_us_nc,
+            inicio=agora_dt,
+            atendido=agora_dt,  # Já assumido imediatamente (criou o chat)
+            criado_por_atendente=user.name
+        )
+        db_sql.session.add(nova_te)
+        db_sql.session.commit()
+        print(f"[NOVO CHAT] TempoEspera criado para {contact.phone} por {user.name}")
+    except Exception as e_te:
+        db_sql.session.rollback()
+        print(f"Erro ao registrar TempoEspera (novo chat): {e_te}")
 
     try:
         if os.getenv('WEBHOOK_ATENDIMENTO_URL'):
@@ -4102,12 +4149,21 @@ def assign_chat(id):
                 atend_chat.atendente_desde = agora_iso
                 atend_chat.alerta_20min_enviado = False
                 atend_chat.alerta_40min_enviado = False
+            
+            # Atualiza o último setor com base no atendente atual
+            if _setor_a and _filial_a:
+                atend_chat.ultimo_setor = f"{_setor_a}:{_filial_a}"
+            elif _setor_a or _filial_a:
+                atend_chat.ultimo_setor = _setor_a or _filial_a
+
         else:
+            _us = f"{_setor_a}:{_filial_a}" if (_setor_a and _filial_a) else (_setor_a or _filial_a)
             atend_chat = AtendimentoChat(
                 numero=contact.phone,
                 status='atendente',
                 atendente=user.name,
                 ultimo_atendente=user.name,
+                ultimo_setor=_us,
                 registro_time_chat=agora_iso,
                 atendente_desde=agora_iso,
                 alerta_20min_enviado=False,
@@ -4190,11 +4246,12 @@ def release_chat(id):
     
     # Atualiza o monitoramento de tempo de espera com o timestamp de finalizacao
     try:
-        espera_ativa = TempoEspera.query.filter_by(numero_cliente=contact.phone, finalizado=None).order_by(TempoEspera.id.desc()).first()
-        if espera_ativa:
+        esperas_ativas = TempoEspera.query.filter_by(numero_cliente=contact.phone, finalizado=None).all()
+        for espera_ativa in esperas_ativas:
             espera_ativa.finalizado = get_now_sp()
+        if esperas_ativas:
             db_sql.session.commit()
-            print(f"[TEMPO_ESPERA] Finalizado registrado para {contact.phone}")
+            print(f"[TEMPO_ESPERA] {len(esperas_ativas)} ciclos finalizados para {contact.phone}")
     except Exception as e_te:
         db_sql.session.rollback()
         print(f"[TEMPO_ESPERA] Erro ao registrar finalizado: {e_te}")
@@ -4530,6 +4587,20 @@ def chat_transfer():
     
     db_sql.session.commit()
     
+    # Fechar o TempoEspera atual (se houver) e iniciar um novo para a transferência
+    try:
+        espera_ativa = TempoEspera.query.filter_by(numero_cliente=contact.phone, finalizado=None).order_by(TempoEspera.id.desc()).first()
+        if espera_ativa:
+            espera_ativa.finalizado = get_now_sp()
+        
+        nova_espera = TempoEspera(numero_cliente=contact.phone, inicio=get_now_sp())
+        db_sql.session.add(nova_espera)
+        db_sql.session.commit()
+        print(f"[TEMPO_ESPERA] Ciclo fechado e reiniciado para transferencia: {contact.phone}")
+    except Exception as e_te:
+        db_sql.session.rollback()
+        print(f"[TEMPO_ESPERA] Erro ao registrar transferencia: {e_te}")
+
     # Registra no SLA que o chat entrou na fila de transferência
     track_sla_event(contact.phone, filial=filial, setor=setor, event_type='QUEUE_ENTER')
 
@@ -4543,7 +4614,8 @@ def chat_transfer():
             atend_chat_tr.atendente_desde = agora_tr_iso  # timer reinicia agora
             atend_chat_tr.alerta_20min_enviado = False
             atend_chat_tr.alerta_40min_enviado = False
-            atend_chat_tr.ultimo_setor = setor       # registra setor de destino
+            _us_tr = f"{setor}:{filial}" if (setor and filial) else (setor or filial)
+            atend_chat_tr.ultimo_setor = _us_tr       # registra setor e filial de destino
             db_sql.session.commit()
             print(f"[TRANSFER] Timer de espera reiniciado para {contact.phone} → {filial}/{setor}")
     except Exception as e_tr:
@@ -5217,7 +5289,8 @@ def report_ranking():
                 last_in_time = None
                 
             if msg.type == 'in':
-                last_in_time = msg.timestamp
+                if last_in_time is None:
+                    last_in_time = msg.timestamp
             elif msg.type == 'out':
                 if msg.sender_id:
                     if msg.sender_id not in attendant_stats:
@@ -5457,9 +5530,13 @@ def report_nps_respostas():
 
 
 def _segundos_espera_sql():
+    if 'sqlite' in app.config.get('SQLALCHEMY_DATABASE_URI', ''):
+        return "CAST(strftime('%s', atendido) - strftime('%s', inicio) AS INTEGER)"
     return "EXTRACT(EPOCH FROM (atendido - inicio))"
 
 def _segundos_chat_sql():
+    if 'sqlite' in app.config.get('SQLALCHEMY_DATABASE_URI', ''):
+        return "CAST(strftime('%s', finalizado) - strftime('%s', atendido) AS INTEGER)"
     return "EXTRACT(EPOCH FROM (finalizado - atendido))"
 
 
@@ -5820,95 +5897,100 @@ def report_volume_chats_filiais():
 @auth_required
 @admin_or_gestor_required
 def report_volume_chats_atendentes():
-    """Volume de chats criados, fechados e abertos por atendente."""
+    """Lista todos os atendentes com métricas de criados (nova conversa), fechados (finalizar) e atendimentos ativos (tag)."""
     try:
         start_date = request.args.get('start_date')
         end_date   = request.args.get('end_date')
-        
-        params = {}
-        date_filters = ""
-        if start_date and end_date:
-            params['start_date'] = start_date
-            params['end_date'] = end_date + ' 23:59:59'
-            date_filters = """
-                AND ((inicio >= :start_date AND inicio <= :end_date)
-                   OR (finalizado >= :start_date AND finalizado <= :end_date)
-                   OR (finalizado IS NULL))
-            """
-        
-        sql = db_sql.text(f"""
-            SELECT nome_atendente, setor_filial,
-                   SUM(CASE WHEN inicio >= :start_date AND inicio <= :end_date THEN 1 ELSE 0 END) as criados,
-                   SUM(CASE WHEN finalizado >= :start_date AND finalizado <= :end_date THEN 1 ELSE 0 END) as fechados
-            FROM tempo_espera
-            WHERE nome_atendente IS NOT NULL AND nome_atendente != '' {date_filters}
-            GROUP BY nome_atendente, setor_filial
-        """)
-        rows = db_sql.session.execute(sql, params).fetchall()
 
-        # Obter todos os usuarios para mapear email -> nome e pegar setor/filial real do usuario
-        users = User.query.all()
-        email_to_name = {u.email.lower().strip(): u.name.strip() for u in users if u.email and u.name}
-        name_to_user = {u.name.lower().strip(): u for u in users if u.name}
-
-        def normalize_atendente_nome(n):
-            n_str = str(n).strip()
-            if '@' in n_str:
-                n_lower = n_str.lower()
-                if n_lower in email_to_name:
-                    return email_to_name[n_lower]
-            return n_str
+        # ── 1. Todos os usuários (atendentes) cadastrados ──────────────────────
+        users = User.query.filter(User.role.in_(['user', 'gestor'])).all()
+        email_to_name = {u.email.lower(): u.name for u in users if u.email}
 
         atendentes_map = {}
-        for row in rows:
-            nome     = normalize_atendente_nome(row[0] or '-')
-            criados  = int(row[2] or 0)
-            # Fetching fechados from atendimentos_chat now instead of tempo_espera
-            
-            key = nome.lower()
-            if key not in atendentes_map:
-                atendentes_map[key] = {'nome': nome, 'criados': 0, 'fechados': 0, 'abertos': 0}
-            
-            atendentes_map[key]['criados'] += criados
+        for u in users:
+            key = u.name.lower()
+            atendentes_map[key] = {
+                'nome': u.name,
+                'filial': u.filial or '-',
+                'setor': u.setor or '-',
+                'criados': 0,
+                'fechados': 0,
+                'atendimentos': 0
+            }
 
-        # Agora pega a fila de ATENDIMENTO REAL usando a tabela atendimentos_chat
-        sql_abertos = db_sql.text("""
-            SELECT atendente, 
-                   SUM(CASE WHEN LOWER(status) = 'atendente' THEN 1 ELSE 0 END) as abertos,
-                   SUM(CASE WHEN LOWER(status) = 'bot' THEN 1 ELSE 0 END) as fechados
-            FROM atendimentos_chat
-            WHERE atendente IS NOT NULL AND atendente != ''
-            GROUP BY atendente
+        def resolve_name(raw):
+            s = str(raw or '').strip()
+            if '@' in s and s.lower() in email_to_name:
+                return email_to_name[s.lower()]
+            return s
+
+        # ── 2. Criados no período: chats iniciados via "Nova Conversa" (dashboard) ─
+        criado_params = {}
+        criado_filter = ""
+        if start_date and end_date:
+            criado_filter = "AND inicio >= :start_date AND inicio <= :end_date"
+            criado_params = {'start_date': start_date, 'end_date': end_date + ' 23:59:59'}
+        sql_criados = db_sql.text(f"""
+            SELECT criado_por_atendente, COUNT(*) as total
+            FROM tempo_espera
+            WHERE criado_por_atendente IS NOT NULL AND criado_por_atendente != ''
+            {criado_filter}
+            GROUP BY criado_por_atendente
         """)
-        abertos_rows = db_sql.session.execute(sql_abertos).fetchall()
-        for row in abertos_rows:
-            nome = normalize_atendente_nome(row[0] or '-')
-            qtd_abertos = int(row[1] or 0)
-            qtd_fechados = int(row[2] or 0)
-            
-            key = nome.lower()
+        for row in db_sql.session.execute(sql_criados, criado_params).fetchall():
+            nome = resolve_name(row[0])
+            key  = nome.lower()
             if key not in atendentes_map:
-                atendentes_map[key] = {'nome': nome, 'criados': 0, 'fechados': 0, 'abertos': 0}
-                
-            atendentes_map[key]['abertos'] = qtd_abertos
-            atendentes_map[key]['fechados'] = qtd_fechados
+                atendentes_map[key] = {'nome': nome, 'filial': '-', 'setor': '-', 'criados': 0, 'fechados': 0, 'atendimentos': 0}
+            atendentes_map[key]['criados'] += int(row[1] or 0)
+
+        # ── 3. Fechados no período: atendente que estava no ciclo quando finalizou ─
+        fech_filter = ""
+        fech_params = {}
+        if start_date and end_date:
+            fech_filter = "AND finalizado >= :start_date AND finalizado <= :end_date"
+            fech_params = {'start_date': start_date, 'end_date': end_date + ' 23:59:59'}
+        sql_fechados = db_sql.text(f"""
+            SELECT nome_atendente, COUNT(*) as total
+            FROM tempo_espera
+            WHERE nome_atendente IS NOT NULL AND nome_atendente != ''
+            AND finalizado IS NOT NULL
+            {fech_filter}
+            GROUP BY nome_atendente
+        """)
+        for row in db_sql.session.execute(sql_fechados, fech_params).fetchall():
+            nome = resolve_name(row[0])
+            key  = nome.lower()
+            if key not in atendentes_map:
+                atendentes_map[key] = {'nome': nome, 'filial': '-', 'setor': '-', 'criados': 0, 'fechados': 0, 'atendimentos': 0}
+            atendentes_map[key]['fechados'] += int(row[1] or 0)
+
+        # ── 4. Atendimentos ativos agora: contatos com tag "Atendente: Nome" ────
+        all_contacts = Contact.query.with_entities(Contact.tags).all()
+        for (ctags,) in all_contacts:
+            if not ctags: continue
+            tag_list = ctags if isinstance(ctags, list) else []
+            for t in tag_list:
+                if isinstance(t, str) and t.strip().lower().startswith('atendente:'):
+                    nome = t.split(':', 1)[1].strip()
+                    key  = nome.lower()
+                    if key not in atendentes_map:
+                        atendentes_map[key] = {'nome': nome, 'filial': '-', 'setor': '-', 'criados': 0, 'fechados': 0, 'atendimentos': 0}
+                    atendentes_map[key]['atendimentos'] += 1
+                    break
 
         result = []
         for key, data in atendentes_map.items():
-            user_obj = name_to_user.get(key)
-            filial = user_obj.filial if user_obj and user_obj.filial else '-'
-            setor = user_obj.setor if user_obj and user_obj.setor else '-'
-            
             result.append({
-                'atendente': data['nome'],
-                'filial': filial,
-                'setor': setor,
-                'criados': data['criados'],
-                'fechados': data['fechados'],
-                'abertos': data['abertos']
+                'atendente':    data['nome'],
+                'filial':       data['filial'],
+                'setor':        data['setor'],
+                'criados':      data['criados'],
+                'fechados':     data['fechados'],
+                'atendimentos': data['atendimentos']
             })
-            
-        result.sort(key=lambda x: (-x['abertos'], -x['criados'], -x['fechados']))
+
+        result.sort(key=lambda x: (-x['atendimentos'], -x['fechados'], x['atendente']))
         return jsonify({'success': True, 'data': result}), 200
     except Exception as e:
         import traceback
