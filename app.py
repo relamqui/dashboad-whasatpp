@@ -5546,7 +5546,6 @@ def _segundos_chat_sql():
 def report_tempo_espera_atendentes():
     """Ranking de atendentes por eficiência de tempo de espera."""
     try:
-        import math
         start_date = request.args.get('start_date')
         end_date   = request.args.get('end_date')
         filters = "AND atendido IS NOT NULL AND nome_atendente IS NOT NULL AND nome_atendente != ''"
@@ -5575,7 +5574,8 @@ def report_tempo_espera_atendentes():
             avg_espera = float(row[3] or 0)
             avg_chat   = float(row[4] or 0)
             total_med  = avg_espera + avg_chat
-            score      = math.log(total + 1) * 10000 / (total_med + 1) if total > 0 else 0
+            # Score puro por tempo médio (sem peso de volume) — quanto menor o tempo, maior o score.
+            score      = 10000 / (total_med + 1) if total > 0 else 0
             partes     = sf.split(':', 1) if ':' in sf else [sf, '-']
             setor      = partes[0].strip()
             filial     = partes[1].strip() if len(partes) > 1 else '-'
@@ -5656,7 +5656,6 @@ def report_tempo_espera_extrato():
 def report_tempo_espera_filiais():
     """Ranking de filiais/setores por eficiência de tempo de espera."""
     try:
-        import math
         start_date = request.args.get('start_date')
         end_date   = request.args.get('end_date')
         filters = "AND atendido IS NOT NULL AND setor_filial IS NOT NULL AND setor_filial != ''"
@@ -5682,7 +5681,8 @@ def report_tempo_espera_filiais():
             avg_espera = float(row[2] or 0)
             avg_chat   = float(row[3] or 0)
             total_med  = avg_espera + avg_chat
-            score      = math.log(total + 1) * 10000 / (total_med + 1) if total > 0 else 0
+            # Score puro por tempo médio (sem peso de volume) — quanto menor o tempo, maior o score.
+            score      = 10000 / (total_med + 1) if total > 0 else 0
             partes     = sf.split(':', 1) if ':' in sf else [sf, '-']
             setor      = partes[0].strip()
             filial     = partes[1].strip() if len(partes) > 1 else '-'
@@ -5701,7 +5701,8 @@ def report_tempo_espera_filiais():
             total_f    = sum(s['total_atendidos'] for s in setores)
             avg_esp_f  = sum(s['avg_espera_seg'] * s['total_atendidos'] for s in setores) / total_f if total_f else 0
             avg_chat_f = sum((s['avg_chat_seg'] or 0) * s['total_atendidos'] for s in setores) / total_f if total_f else 0
-            score_f    = math.log(total_f + 1) * 10000 / (avg_esp_f + avg_chat_f + 1) if total_f > 0 else 0
+            # Score puro por tempo médio (sem peso de volume) — consistente com o score por setor/atendente.
+            score_f    = 10000 / (avg_esp_f + avg_chat_f + 1) if total_f > 0 else 0
             result.append({
                 'filial': filial, 'total_atendidos': total_f,
                 'avg_espera_seg': round(avg_esp_f, 0),
@@ -5763,15 +5764,18 @@ def report_volume_chats_filiais():
 
         # ── 1. Criados no período ──────────────────────────────────────────────
         criado_params = {}
-        criado_filter = "WHERE 1=1"
-        if start_date and end_date:
-            criado_filter = "WHERE inicio >= :start_date AND inicio <= :end_date"
-            criado_params = {'start_date': start_date, 'end_date': end_date + ' 23:59:59'}
+        criado_filter = ""
+        if start_date:
+            criado_filter += " AND inicio >= :start_date"
+            criado_params['start_date'] = start_date
+        if end_date:
+            criado_filter += " AND inicio <= :end_date"
+            criado_params['end_date'] = end_date + ' 23:59:59'
         sql_criados = db_sql.text(f"""
             SELECT setor_filial, COUNT(*) as total
             FROM tempo_espera
+            WHERE setor_filial IS NOT NULL AND setor_filial != ''
             {criado_filter}
-            AND setor_filial IS NOT NULL AND setor_filial != ''
             GROUP BY setor_filial
         """)
         for row in db_sql.session.execute(sql_criados, criado_params).fetchall():
@@ -5782,13 +5786,17 @@ def report_volume_chats_filiais():
 
         # ── 2. Fechados no período ─────────────────────────────────────────────
         fech_params = {}
-        fech_filter = "WHERE finalizado IS NOT NULL"
-        if start_date and end_date:
-            fech_filter = "WHERE finalizado >= :start_date AND finalizado <= :end_date"
-            fech_params = {'start_date': start_date, 'end_date': end_date + ' 23:59:59'}
+        fech_filter = ""
+        if start_date:
+            fech_filter += " AND finalizado >= :start_date"
+            fech_params['start_date'] = start_date
+        if end_date:
+            fech_filter += " AND finalizado <= :end_date"
+            fech_params['end_date'] = end_date + ' 23:59:59'
         sql_fechados = db_sql.text(f"""
             SELECT setor_filial, COUNT(*) as total
             FROM tempo_espera
+            WHERE finalizado IS NOT NULL
             {fech_filter}
             AND setor_filial IS NOT NULL AND setor_filial != ''
             GROUP BY setor_filial
@@ -5814,19 +5822,34 @@ def report_volume_chats_filiais():
                 filiais[fn][sn]['espera'] += int(row[1] or 0)
 
         # ── 4. Em Atendimento agora: contatos com tag "Atendente:" + tag Filial:Setor ─
+        # Fallback: quando a tag do contato não traz um Filial:Setor reconhecível,
+        # usa a filial/setor cadastrados do próprio atendente (User) — mantém a
+        # contagem consistente com /api/reports/volume-chats-atendentes, que conta
+        # todo contato com tag "Atendente:" independente de tag de filial/setor.
+        users_by_name = {u.name.strip().lower(): u for u in users_all if u.name}
         all_contacts = Contact.query.with_entities(Contact.tags).all()
         for (ctags,) in all_contacts:
             if not ctags: continue
             tag_list = ctags if isinstance(ctags, list) else []
-            has_att = any(isinstance(t, str) and t.strip().lower().startswith('atendente:') for t in tag_list)
-            if not has_att: continue
+            att_tag = next((t for t in tag_list if isinstance(t, str) and t.strip().lower().startswith('atendente:')), None)
+            if not att_tag: continue
+
+            fn = sn = None
             for t in tag_list:
                 if isinstance(t, str) and ':' in t and not t.strip().lower().startswith('atendente:'):
                     fn, sn = resolve_sf(t)
                     if fn and sn:
-                        ensure(fn, sn)
-                        filiais[fn][sn]['atendimento'] += 1
                         break
+
+            if not (fn and sn):
+                att_name = att_tag.split(':', 1)[1].strip()
+                u = users_by_name.get(att_name.lower())
+                if u and u.filial and u.setor:
+                    fn, sn = u.filial, u.setor
+
+            if fn and sn:
+                ensure(fn, sn)
+                filiais[fn][sn]['atendimento'] += 1
 
         # ── Monta resultado ────────────────────────────────────────────────────
         result = []
@@ -5884,9 +5907,12 @@ def report_volume_chats_atendentes():
         # ── 2. Criados no período: chats iniciados via "Nova Conversa" (dashboard) ─
         criado_params = {}
         criado_filter = ""
-        if start_date and end_date:
-            criado_filter = "AND inicio >= :start_date AND inicio <= :end_date"
-            criado_params = {'start_date': start_date, 'end_date': end_date + ' 23:59:59'}
+        if start_date:
+            criado_filter += " AND inicio >= :start_date"
+            criado_params['start_date'] = start_date
+        if end_date:
+            criado_filter += " AND inicio <= :end_date"
+            criado_params['end_date'] = end_date + ' 23:59:59'
         sql_criados = db_sql.text(f"""
             SELECT criado_por_atendente, COUNT(*) as total
             FROM tempo_espera
@@ -5904,9 +5930,12 @@ def report_volume_chats_atendentes():
         # ── 3. Fechados no período: atendente que estava no ciclo quando finalizou ─
         fech_filter = ""
         fech_params = {}
-        if start_date and end_date:
-            fech_filter = "AND finalizado >= :start_date AND finalizado <= :end_date"
-            fech_params = {'start_date': start_date, 'end_date': end_date + ' 23:59:59'}
+        if start_date:
+            fech_filter += " AND finalizado >= :start_date"
+            fech_params['start_date'] = start_date
+        if end_date:
+            fech_filter += " AND finalizado <= :end_date"
+            fech_params['end_date'] = end_date + ' 23:59:59'
         sql_fechados = db_sql.text(f"""
             SELECT nome_atendente, COUNT(*) as total
             FROM tempo_espera

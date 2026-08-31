@@ -256,6 +256,10 @@
   function loadAll() { loadNpsF(); loadNpsA(); loadNpsR(); loadTeF(); loadTeA(); loadTeE(); loadVolF(); loadVolA(); }
 
   /* ── Helpers ── */
+  function esc(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
   function fmtD(dStr) {
     if(!dStr || dStr==='-') return '-';
     try {
@@ -292,7 +296,7 @@
         const fnps=tv>0?Math.round(((tp-td)/tv)*100):0, fmed=tv>0?(sm/tv).toFixed(1):'—', cls=npsC(fnps);
         const setoresHtml = f.setores.map(s=>{
           const sc=npsC(s.nps_score);
-          return '<div class="setor-card"><div class="setor-card-header"><div><div class="setor-name">'+s.setor+'</div><div class="setor-meta">'+s.total_votos+' voto(s)</div></div>'
+          return '<div class="setor-card"><div class="setor-card-header"><div><div class="setor-name">'+esc(s.setor)+'</div><div class="setor-meta">'+s.total_votos+' voto(s)</div></div>'
             +'<div class="nps-circle '+sc+'" style="width:42px;height:42px;font-size:12px">'+s.nps_score+'</div></div>'
             +'<div style="font-size:13px;margin-bottom:10px">⭐ <strong class="media-nota '+mC(s.media_nota)+'" style="font-size:15px">'+s.media_nota+'</strong></div>'
             +'<div class="nps-bars">'
@@ -303,7 +307,7 @@
         }).join('');
         return '<div class="filial-block" id="nf'+fi+'">'
           +'<div class="filial-header" onclick="tog(\'nf'+fi+'\')">'
-          +'<div class="filial-header-left"><div class="filial-icon ni">🏢</div><div><div class="filial-name">'+f.filial+'</div><div class="filial-meta">'+f.setores.length+' setor(es) · '+tv+' votos</div></div></div>'
+          +'<div class="filial-header-left"><div class="filial-icon ni">🏢</div><div><div class="filial-name">'+esc(f.filial)+'</div><div class="filial-meta">'+f.setores.length+' setor(es) · '+tv+' votos</div></div></div>'
           +'<div class="filial-header-right"><div class="stat-inline"><div class="stat-val media-nota '+mC(parseFloat(fmed))+'">⭐ '+fmed+'</div><div class="stat-lbl">Média notas</div></div>'
           +'<div class="nps-circle '+cls+'">'+fnps+'</div>'+chv()+'</div></div>'
           +'<div class="filial-body"><div class="setores-grid">'+setoresHtml+'</div></div></div>';
@@ -325,8 +329,8 @@
         +'<th>Posição</th><th>Atendente</th><th>Filial</th><th>NPS</th><th>Média ⭐</th><th>Promotores</th><th>Neutros</th><th>Detratores</th><th>Votos</th>'
         +'</tr></thead><tbody>'+d.map((r,i)=>'<tr>'
           +'<td><div class="rank-pos"><span class="medal">'+(medals[i]||'')+'</span><span>#'+(i+1)+'</span></div></td>'
-          +'<td><div class="att-info"><span class="att-name">'+r.atendente+'</span><span class="att-sub">'+r.setor+'</span></div></td>'
-          +'<td style="color:var(--text-secondary)">'+r.filial+'</td>'
+          +'<td><div class="att-info"><span class="att-name">'+esc(r.atendente)+'</span><span class="att-sub">'+esc(r.setor)+'</span></div></td>'
+          +'<td style="color:var(--text-secondary)">'+esc(r.filial)+'</td>'
           +'<td><div class="nps-circle '+npsC(r.nps_score)+'" style="width:42px;height:42px;font-size:12px">'+r.nps_score+'</div></td>'
           +'<td><span class="media-nota '+mC(r.media_nota)+'" style="font-size:16px">⭐ '+r.media_nota+'</span></td>'
           +'<td><span class="pill prom">😊 '+r.promotores+'</span></td>'
@@ -350,15 +354,18 @@
       el.innerHTML='<div class="ranking-table-wrap"><table class="rtable"><thead><tr>'
         +'<th>Cliente</th><th>Voto</th><th>Comentário</th><th>Atendente</th><th>Filial</th><th>Setor</th><th>Ação</th>'
         +'</tr></thead><tbody>'+d.map((r,i)=>'<tr>'
-          +'<td style="font-weight:600">'+r.cliente+'</td>'
-          +'<td><div class="pill '+(parseInt(r.voto)>=9?'prom':(parseInt(r.voto)<=6?'detr':'neut'))+'">⭐ '+r.voto+'</div></td>'
-          +'<td style="max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="'+r.comentario+'">'+(r.comentario||'-')+'</td>'
-          +'<td>'+r.atendente+'</td>'
-          +'<td>'+r.filial+'</td>'
-          +'<td>'+r.setor+'</td>'
-          +'<td><button class="btn-filter" style="padding:6px 12px; font-size:12px;" onclick="window.open(\'dashboard.html?phone='+r.cliente+'\', \'_blank\')">💬 Ir para conversa</button></td>'
+          +'<td style="font-weight:600">'+esc(r.cliente)+'</td>'
+          +'<td><div class="pill '+(parseInt(r.voto)>=9?'prom':(parseInt(r.voto)<=6?'detr':'neut'))+'">⭐ '+esc(r.voto)+'</div></td>'
+          +'<td style="max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="'+esc(r.comentario)+'">'+esc(r.comentario||'-')+'</td>'
+          +'<td>'+esc(r.atendente)+'</td>'
+          +'<td>'+esc(r.filial)+'</td>'
+          +'<td>'+esc(r.setor)+'</td>'
+          +'<td><button class="btn-filter go-chat-btn" style="padding:6px 12px; font-size:12px;" data-phone="'+esc(String(r.cliente||'').replace(/\D/g,''))+'">💬 Ir para conversa</button></td>'
           +'</tr>').join('')
         +'</tbody></table></div>';
+      el.querySelectorAll('.go-chat-btn[data-phone]').forEach(btn => {
+        btn.addEventListener('click', () => window.open('dashboard.html?phone='+encodeURIComponent(btn.dataset.phone), '_blank'));
+      });
     } catch(e){el.innerHTML=errH('Erro de conexão.');}
   }
 
@@ -378,7 +385,7 @@
         const setSc = f.setores.map(s=>s.score);
         const setoresHtml = f.setores.map(s=>{
           const sc=scC(s.score,setSc);
-          return '<div class="setor-card"><div class="setor-card-header"><div><div class="setor-name">'+s.setor+'</div><div class="setor-meta">'+s.total_atendidos+' atendimento(s)</div></div>'
+          return '<div class="setor-card"><div class="setor-card-header"><div><div class="setor-name">'+esc(s.setor)+'</div><div class="setor-meta">'+s.total_atendidos+' atendimento(s)</div></div>'
             +'<div class="score-badge '+sc+'"><span class="sv">'+s.score+'</span><span class="sl">Score</span></div></div>'
             +'<div class="tempo-row"><span class="tempo-label">⏳ Espera média</span><span class="tempo-value '+spC(s.avg_espera_seg)+'">'+fmtS(s.avg_espera_seg)+'</span></div>'
             +'<div class="tempo-row"><span class="tempo-label">💬 Chat médio</span><span class="tempo-value '+spC(s.avg_chat_seg)+'">'+fmtS(s.avg_chat_seg)+'</span></div>'
@@ -387,7 +394,7 @@
         }).join('');
         return '<div class="filial-block" id="tf'+fi+'">'
           +'<div class="filial-header" onclick="tog(\'tf'+fi+'\')">'
-          +'<div class="filial-header-left"><div class="filial-icon ti">🏢</div><div><div class="filial-name">'+f.filial+'</div><div class="filial-meta">'+f.setores.length+' setor(es) · '+f.total_atendidos+' atendimentos</div></div></div>'
+          +'<div class="filial-header-left"><div class="filial-icon ti">🏢</div><div><div class="filial-name">'+esc(f.filial)+'</div><div class="filial-meta">'+f.setores.length+' setor(es) · '+f.total_atendidos+' atendimentos</div></div></div>'
           +'<div class="filial-header-right">'
           +'<div class="stat-inline"><div class="stat-val tempo-value '+spC(f.avg_espera_seg)+'">⏳ '+fmtS(f.avg_espera_seg)+'</div><div class="stat-lbl">Espera média</div></div>'
           +'<div class="stat-inline"><div class="stat-val tempo-value '+spC(f.avg_chat_seg)+'">💬 '+fmtS(f.avg_chat_seg)+'</div><div class="stat-lbl">Chat médio</div></div>'
@@ -412,8 +419,8 @@
         +'<th>Posição</th><th>Atendente</th><th>Filial</th><th>⏳ Espera Média</th><th>💬 Chat Médio</th><th>⚡ Total Médio</th><th>Atendimentos</th><th>Score</th>'
         +'</tr></thead><tbody>'+d.map((r,i)=>'<tr>'
           +'<td><div class="rank-pos"><span class="medal">'+(medals[i]||'')+'</span><span>#'+(i+1)+'</span></div></td>'
-          +'<td><div class="att-info"><span class="att-name">'+r.atendente+'</span><span class="att-sub">'+r.setor+'</span></div></td>'
-          +'<td style="color:var(--text-secondary)">'+r.filial+'</td>'
+          +'<td><div class="att-info"><span class="att-name">'+esc(r.atendente)+'</span><span class="att-sub">'+esc(r.setor)+'</span></div></td>'
+          +'<td style="color:var(--text-secondary)">'+esc(r.filial)+'</td>'
           +'<td><span class="tempo-value '+spC(r.avg_espera_seg)+'">'+fmtS(r.avg_espera_seg)+'</span></td>'
           +'<td><span class="tempo-value '+spC(r.avg_chat_seg)+'">'+fmtS(r.avg_chat_seg)+'</span></td>'
           +'<td><span class="tempo-value '+spC(r.avg_total_seg)+'">'+fmtS(r.avg_total_seg)+'</span></td>'
@@ -440,7 +447,7 @@
           <summary class="accordion-header">
             <div class="acc-title-flex">
               <span class="acc-icon">🧑‍💼</span>
-              <span class="acc-name">${att.atendente}</span>
+              <span class="acc-name">${esc(att.atendente)}</span>
               <span class="acc-badge">${att.atendimentos.length} atendimentos</span>
             </div>
             ${chv()}
@@ -459,12 +466,12 @@
               </thead>
               <tbody>
                 ${att.atendimentos.map(r => `<tr>
-                  <td style="font-weight:600">${r.cliente}</td>
-                  <td>${fmtD(r.data)}</td>
+                  <td style="font-weight:600">${esc(r.cliente)}</td>
+                  <td>${esc(fmtD(r.data))}</td>
                   <td><span class="tempo-value ${spC(r.espera_seg)}">${fmtS(r.espera_seg)}</span></td>
                   <td><span class="tempo-value ${spC(r.chat_seg)}">${fmtS(r.chat_seg)}</span></td>
-                  <td>${r.setor_filial}</td>
-                  <td><a href="dashboard.html?phone=${r.cliente.replace(/\D/g,'')}" target="_blank" style="display:inline-block; padding:6px 12px; background:var(--bg-card); border:1px solid var(--border); color:var(--text-primary); text-decoration:none; border-radius:6px; font-size:0.85rem; transition:0.2s;">💬 Ir para conversa</a></td>
+                  <td>${esc(r.setor_filial)}</td>
+                  <td><a href="dashboard.html?phone=${encodeURIComponent(String(r.cliente||'').replace(/\D/g,''))}" target="_blank" style="display:inline-block; padding:6px 12px; background:var(--bg-card); border:1px solid var(--border); color:var(--text-primary); text-decoration:none; border-radius:6px; font-size:0.85rem; transition:0.2s;">💬 Ir para conversa</a></td>
                 </tr>`).join('')}
               </tbody>
             </table>
@@ -487,7 +494,7 @@
     tb.innerHTML = filtered.length
       ? filtered.map(s =>
           '<tr>'
-          +'<td><span class="att-name">'+s.setor+'</span></td>'
+          +'<td><span class="att-name">'+esc(s.setor)+'</span></td>'
           +'<td><span class="tempo-value" style="color:var(--blue)">'+s.criados+'</span></td>'
           +'<td><span class="tempo-value" style="color:var(--green)">'+s.fechados+'</span></td>'
           +'<td><span class="tempo-value" style="color:var(--yellow)">'+s.espera+'</span></td>'
@@ -501,7 +508,7 @@
     if (!setores.length) return '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:12px">Sem dados</td></tr>';
     return setores.map(s =>
       '<tr>'
-      +'<td><span class="att-name">'+s.setor+'</span></td>'
+      +'<td><span class="att-name">'+esc(s.setor)+'</span></td>'
       +'<td><span class="tempo-value" style="color:var(--blue)">'+s.criados+'</span></td>'
       +'<td><span class="tempo-value" style="color:var(--green)">'+s.fechados+'</span></td>'
       +'<td><span class="tempo-value" style="color:var(--yellow)">'+s.espera+'</span></td>'
@@ -537,7 +544,7 @@
         '<div class="filial-block" id="vf'+fi+'">'
         +'<div class="filial-header" onclick="tog(\'vf'+fi+'\')">'
         +'<div class="filial-header-left"><div class="filial-icon vi">🏢</div><div>'
-        +'<div class="filial-name">'+f.filial+'</div>'
+        +'<div class="filial-name">'+esc(f.filial)+'</div>'
         +'<div class="filial-meta">'+f.setores.length+' setor(es)</div>'
         +'</div></div>'
         +'<div class="filial-header-right">'
@@ -602,8 +609,8 @@
           ? '<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);padding:24px">Nenhum resultado</td></tr>'
           : filtered.map(r =>
               '<tr>'
-              +'<td><div class="att-info"><span class="att-name">'+r.atendente+'</span><span class="att-sub">'+r.setor+'</span></div></td>'
-              +'<td style="color:var(--text-secondary)">'+r.filial+'</td>'
+              +'<td><div class="att-info"><span class="att-name">'+esc(r.atendente)+'</span><span class="att-sub">'+esc(r.setor)+'</span></div></td>'
+              +'<td style="color:var(--text-secondary)">'+esc(r.filial)+'</td>'
               +'<td><span class="tempo-value" style="color:var(--blue)">'+r.criados+'</span></td>'
               +'<td><span class="tempo-value" style="color:var(--green)">'+r.fechados+'</span></td>'
               +'<td><span class="tempo-value" style="color:var(--yellow)">'+r.atendimentos+'</span></td>'
