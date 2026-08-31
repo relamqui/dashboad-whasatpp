@@ -2768,6 +2768,52 @@ def wait_time_monitor_loop():
                     print(f"[NPS] Erro no loop de timeout: {_nps_loop_e}")
                 # ─────────────────────────────────────────────────────────────────
 
+                # ── Auto-encerramento por inatividade (24h sem nenhuma mensagem) ───
+                # Acima de 7 dias sem interação, fecha em modo silencioso (sem mensagem
+                # nem enquete de NPS) — evita mandar "sua pesquisa de satisfação" do
+                # nada pra quem sumiu há semanas/meses, e evita picos de disparo no WAHA.
+                try:
+                    LIMITE_INATIVIDADE_SEG = 24 * 3600
+                    LIMITE_SILENCIOSO_SEG = 7 * 24 * 3600
+                    THROTTLE_ENTRE_FECHAMENTOS_SEG = 1.5
+                    agora_ts = int(get_now().timestamp())
+                    atendimentos_ativos = AtendimentoChat.query.filter_by(status='atendente').all()
+                    for reg_at in atendimentos_ativos:
+                        try:
+                            contact_at = Contact.query.filter_by(phone=reg_at.numero).order_by(Contact.id).first()
+                            if not contact_at:
+                                continue
+                            ultima_msg = Message.query.filter_by(contact_id=contact_at.id).order_by(Message.timestamp.desc()).first()
+                            if ultima_msg:
+                                ultimo_ts = ultima_msg.timestamp
+                            elif reg_at.atendente_desde:
+                                _dt_fb = datetime.datetime.fromisoformat(reg_at.atendente_desde)
+                                if _dt_fb.tzinfo is None:
+                                    _dt_fb = pytz.timezone('America/Sao_Paulo').localize(_dt_fb)
+                                ultimo_ts = int(_dt_fb.timestamp())
+                            else:
+                                continue
+                            elapsed = agora_ts - ultimo_ts
+                            if elapsed >= LIMITE_SILENCIOSO_SEG:
+                                _finalizar_atendimento(contact_at, motivo='inatividade_7d_silencioso', notificar=False)
+                                print(f"[INATIVIDADE] Atendimento de {contact_at.phone} encerrado silenciosamente — {elapsed/3600:.1f}h sem interação.")
+                                time.sleep(THROTTLE_ENTRE_FECHAMENTOS_SEG)
+                            elif elapsed >= LIMITE_INATIVIDADE_SEG:
+                                aviso_inatividade = (
+                                    "Este atendimento foi encerrado automaticamente por inatividade "
+                                    "(mais de 24 horas sem novas mensagens). Caso ainda precise de "
+                                    "ajuda, é só nos chamar novamente por aqui! 😊"
+                                )
+                                _finalizar_atendimento(contact_at, motivo='inatividade_24h', aviso_extra=aviso_inatividade)
+                                print(f"[INATIVIDADE] Atendimento de {contact_at.phone} encerrado — {elapsed/3600:.1f}h sem interação.")
+                                time.sleep(THROTTLE_ENTRE_FECHAMENTOS_SEG)
+                        except Exception as e_inat_reg:
+                            db_sql.session.rollback()
+                            print(f"[INATIVIDADE] Erro ao processar {reg_at.numero}: {e_inat_reg}")
+                except Exception as e_inat_loop:
+                    print(f"[INATIVIDADE] Erro no loop de inatividade: {e_inat_loop}")
+                # ─────────────────────────────────────────────────────────────────
+
         except Exception as e_loop:
             print(f"[MONITOR] Erro no loop de monitoramento: {e_loop}")
         time.sleep(60)  # Verifica a cada 60 segundos
@@ -4199,23 +4245,31 @@ def assign_chat(id):
         'tags': contact.tags
     })
 
-@app.route('/api/contacts/<id>/release', methods=['POST'])
-@auth_required
-def release_chat(id):
-    """Finalizar atendimento: libera o chat."""
-    contact = Contact.query.filter_by(id=id).first()
-    if not contact:
-        return jsonify({'error': 'Contato não encontrado'}), 404
-    
-    # Apenas o atendente atual ou admin podem finalizar
-    if contact.assigned_to and contact.assigned_to != request.user['id'] and request.user.get('role') != 'admin':
-        return jsonify({'error': 'Apenas o atendente atual pode finalizar o atendimento'}), 403
-    
-    user = User.query.get(request.user['id'])
-    old_name = contact.assigned_name or user.name
+def _finalizar_atendimento(contact, acting_user=None, motivo='manual', aviso_extra=None, notificar=True):
+    """Lógica central de finalizar atendimento: remove tag do atendente
+    (mantém Filial:Setor), fecha o ciclo de tempo_espera, dispara a pesquisa
+    de satisfação (NPS) e os webhooks de finalização.
+
+    Usada pela rota manual /api/contacts/<id>/release e pelo monitor de
+    inatividade de 24h (wait_time_monitor_loop). Quando `acting_user` não é
+    informado (fechamento automático), usa o atendente atualmente atribuído
+    ao contato para nome/filial/setor no webhook. `aviso_extra`, se
+    informado, é enviado como mensagem de texto ANTES da enquete de NPS
+    (ex.: aviso de encerramento por inatividade).
+
+    `notificar=False` faz um fechamento silencioso: NÃO envia `aviso_extra`
+    nem a enquete de NPS ao cliente, só atualiza status/tags internamente.
+    Usado para fechar atendimentos abandonados há muito tempo (ex.: mais de
+    7 dias sem interação), onde mandar aviso/pesquisa de satisfação do nada
+    não faz sentido pro cliente e gera picos de disparo no WAHA.
+
+    Retorna a lista final de tags do contato.
+    """
+    user = acting_user or (User.query.get(contact.assigned_to) if contact.assigned_to else None)
+    old_name = contact.assigned_name or (user.name if user else 'Sistema')
     contact.assigned_to = None
     contact.assigned_name = None
-    
+
     _filial_r = None
     _setor_r = None
     if user:
@@ -4225,25 +4279,25 @@ def release_chat(id):
         if user.setor_id:
             _s = Setor.query.get(user.setor_id)
             _setor_r = _s.name if _s else None
-            
+
     # Ao finalizar: remove tag do atendente, mantém Filial:Setor, adiciona BOT
     current_tags = list(contact.tags or [])
-    
+
     # Remove tags de atendente (ex: "Atendente: Fulano") — case-insensitive com strip
     preserved_tags = [
         t for t in current_tags
         if not (isinstance(t, str) and t.strip().lower().startswith('atendente:'))
     ]
-    
+
     # Remove BOT caso já exista (para não duplicar) e adiciona no início
     preserved_tags = [t for t in preserved_tags if t.strip().upper() != 'BOT']
     preserved_tags.insert(0, 'BOT')
-    
+
     contact.tags = preserved_tags
     flag_modified(contact, 'tags')
-    
+
     db_sql.session.commit()
-    
+
     # Atualiza o monitoramento de tempo de espera com o timestamp de finalizacao
     try:
         esperas_ativas = TempoEspera.query.filter_by(numero_cliente=contact.phone, finalizado=None).all()
@@ -4255,61 +4309,89 @@ def release_chat(id):
     except Exception as e_te:
         db_sql.session.rollback()
         print(f"[TEMPO_ESPERA] Erro ao registrar finalizado: {e_te}")
-    
+
     # Registra no SLA que o atendimento foi finalizado
     track_sla_event(contact.phone, event_type='RELEASED')
-    
-    # ── Dispara NPS direto via WAHA e registra estado na tabela atendimentos_chat ──
-    try:
-        _nps_session = contact.instance or "corpal"
-        _nps_options = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
-        poll_msg = (
-            "Obrigado por entrar em contato com a Corpal! 🌱\n\n"
-            "Para continuarmos melhorando nosso atendimento, avalie sua experiência de *1 a 10*, sendo:\n\n"
-            "*1 = Muito insatisfeito*\n"
-            "*10 = Muito satisfeito*\n\n"
-            "Sua opinião é muito importante para nós."
-        )
-        poll_resp = requests.post(
-            f"{WAHA_API_URL}/api/sendPoll",
-            headers=get_waha_headers(),
-            json={
-                "chatId": f"{contact.phone}@c.us",
-                "poll": {
-                    "name": poll_msg,
-                    "options": _nps_options,
-                    "multipleAnswers": False
-                },
-                "session": _nps_session
-            },
-            timeout=10
-        )
-        # Registra o estado NPS na tabela atendimentos_chat
-        atend_chat_rel = AtendimentoChat.query.filter_by(numero=contact.phone).first()
-        if atend_chat_rel:
-            atend_chat_rel.status = 'bot'
-            atend_chat_rel.atendente = ''
-            atend_chat_rel.atendente_desde = None
-            atend_chat_rel.alerta_20min_enviado = False
-            atend_chat_rel.alerta_40min_enviado = False
-            atend_chat_rel.nps_status = 'waiting_vote'
-            atend_chat_rel.nps_started_at = get_now().isoformat()
-            atend_chat_rel.nps_voto = None
-            # Captura o ID da enquete se o WAHA retornar
-            try:
-                _poll_id = poll_resp.json().get('id') if poll_resp.ok else None
-                atend_chat_rel.nps_poll_id = _poll_id
-            except Exception:
-                pass
-            db_sql.session.commit()
-            print(f"[NPS] Poll enviado e estado 'waiting_vote' registrado para {contact.phone}")
-        else:
-            print(f"[NPS] Registro atendimentos_chat não encontrado para {contact.phone} — NPS não registrado")
-    except Exception as nps_e:
-        db_sql.session.rollback()
-        print(f"[NPS] Erro ao disparar NPS: {nps_e}")
 
-    
+    _nps_session = contact.instance or "corpal"
+
+    if notificar:
+        # Aviso extra (ex.: encerrado por inatividade) — enviado antes da pesquisa NPS
+        if aviso_extra:
+            try:
+                requests.post(
+                    f"{WAHA_API_URL}/api/sendText",
+                    headers=get_waha_headers(),
+                    json={"chatId": f"{contact.phone}@c.us", "text": aviso_extra, "session": _nps_session},
+                    timeout=10
+                )
+            except Exception as e_aviso:
+                print(f"[FINALIZAR] Erro ao enviar aviso extra para {contact.phone}: {e_aviso}")
+
+        # ── Dispara NPS direto via WAHA e registra estado na tabela atendimentos_chat ──
+        try:
+            _nps_options = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+            poll_msg = (
+                "Obrigado por entrar em contato com a Corpal! 🌱\n\n"
+                "Para continuarmos melhorando nosso atendimento, avalie sua experiência de *1 a 10*, sendo:\n\n"
+                "*1 = Muito insatisfeito*\n"
+                "*10 = Muito satisfeito*\n\n"
+                "Sua opinião é muito importante para nós."
+            )
+            poll_resp = requests.post(
+                f"{WAHA_API_URL}/api/sendPoll",
+                headers=get_waha_headers(),
+                json={
+                    "chatId": f"{contact.phone}@c.us",
+                    "poll": {
+                        "name": poll_msg,
+                        "options": _nps_options,
+                        "multipleAnswers": False
+                    },
+                    "session": _nps_session
+                },
+                timeout=10
+            )
+            # Registra o estado NPS na tabela atendimentos_chat
+            atend_chat_rel = AtendimentoChat.query.filter_by(numero=contact.phone).first()
+            if atend_chat_rel:
+                atend_chat_rel.status = 'bot'
+                atend_chat_rel.atendente = ''
+                atend_chat_rel.atendente_desde = None
+                atend_chat_rel.alerta_20min_enviado = False
+                atend_chat_rel.alerta_40min_enviado = False
+                atend_chat_rel.nps_status = 'waiting_vote'
+                atend_chat_rel.nps_started_at = get_now().isoformat()
+                atend_chat_rel.nps_voto = None
+                # Captura o ID da enquete se o WAHA retornar
+                try:
+                    _poll_id = poll_resp.json().get('id') if poll_resp.ok else None
+                    atend_chat_rel.nps_poll_id = _poll_id
+                except Exception:
+                    pass
+                db_sql.session.commit()
+                print(f"[NPS] Poll enviado e estado 'waiting_vote' registrado para {contact.phone} (motivo={motivo})")
+            else:
+                print(f"[NPS] Registro atendimentos_chat não encontrado para {contact.phone} — NPS não registrado")
+        except Exception as nps_e:
+            db_sql.session.rollback()
+            print(f"[NPS] Erro ao disparar NPS: {nps_e}")
+    else:
+        # Fechamento silencioso: sem aviso, sem enquete NPS — só ajusta o status interno
+        try:
+            atend_chat_rel = AtendimentoChat.query.filter_by(numero=contact.phone).first()
+            if atend_chat_rel:
+                atend_chat_rel.status = 'bot'
+                atend_chat_rel.atendente = ''
+                atend_chat_rel.atendente_desde = None
+                atend_chat_rel.alerta_20min_enviado = False
+                atend_chat_rel.alerta_40min_enviado = False
+                db_sql.session.commit()
+            print(f"[FINALIZAR] Fechamento silencioso (sem mensagem/NPS) para {contact.phone} (motivo={motivo})")
+        except Exception as e_silent:
+            db_sql.session.rollback()
+            print(f"[FINALIZAR] Erro no fechamento silencioso para {contact.phone}: {e_silent}")
+
     # Corpal Webhook — evento finalizar
     try:
         now = get_now()
@@ -4321,13 +4403,14 @@ def release_chat(id):
             "filial": _filial_r,
             "setor": _setor_r,
             "nome_atendente": old_name,
-            "atendente_id": str(request.user['id']),
+            "atendente_id": str(user.id) if user else None,
             "direcao": None,
             "mensagem": None,
-            "timestamp": now.isoformat()
+            "timestamp": now.isoformat(),
+            "motivo": motivo
         }
         requests.post(CORPAL_WEBHOOK_URL, json=corpal_payload, timeout=5)
-        
+
         # Novo Webhook específico para finalizar atendimento
         try:
             n8n_final_payload = {
@@ -4341,27 +4424,45 @@ def release_chat(id):
             print(f"Erro no webhook n8n-final-atendimento: {e_n8n}")
     except Exception as e:
         print(f"Erro webhook corpal (release): {e}")
-    
+
     # Emitir socket para todos os clientes atualizarem
     _inst_room = contact.instance or 'unknown'
     socketio.emit('chat_assignment', {
-        'contact_id': id,
+        'contact_id': contact.id,
         'assigned_to': None,
         'assigned_name': None,
         'tags': contact.tags,
         'action': 'release'
     }, room=f'instance_{_inst_room}')
     socketio.emit('chat_assignment', {
-        'contact_id': id,
+        'contact_id': contact.id,
         'assigned_to': None,
         'assigned_name': None,
         'tags': contact.tags,
         'action': 'release'
     }, room='admin')
-    
+
+    return contact.tags
+
+
+@app.route('/api/contacts/<id>/release', methods=['POST'])
+@auth_required
+def release_chat(id):
+    """Finalizar atendimento: libera o chat."""
+    contact = Contact.query.filter_by(id=id).first()
+    if not contact:
+        return jsonify({'error': 'Contato não encontrado'}), 404
+
+    # Apenas o atendente atual ou admin podem finalizar
+    if contact.assigned_to and contact.assigned_to != request.user['id'] and request.user.get('role') != 'admin':
+        return jsonify({'error': 'Apenas o atendente atual pode finalizar o atendimento'}), 403
+
+    user = User.query.get(request.user['id'])
+    tags = _finalizar_atendimento(contact, acting_user=user, motivo='manual')
+
     return jsonify({
         'success': True,
-        'tags': contact.tags
+        'tags': tags
     })
 
 @app.route('/api/admin/settings', methods=['GET', 'POST'])
