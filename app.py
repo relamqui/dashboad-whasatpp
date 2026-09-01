@@ -5675,8 +5675,6 @@ def report_tempo_espera_atendentes():
             avg_espera = float(row[3] or 0)
             avg_chat   = float(row[4] or 0)
             total_med  = avg_espera + avg_chat
-            # Score puro por tempo médio (sem peso de volume) — quanto menor o tempo, maior o score.
-            score      = 10000 / (total_med + 1) if total > 0 else 0
             partes     = sf.split(':', 1) if ':' in sf else [sf, '-']
             setor      = partes[0].strip()
             filial     = partes[1].strip() if len(partes) > 1 else '-'
@@ -5687,10 +5685,9 @@ def report_tempo_espera_atendentes():
                 'avg_chat_seg':   round(avg_chat, 0),
                 'avg_total_seg':  round(total_med, 0),
                 'min_espera_seg': round(float(row[5] or 0), 0),
-                'max_espera_seg': round(float(row[6] or 0), 0),
-                'score': round(score, 1)
+                'max_espera_seg': round(float(row[6] or 0), 0)
             })
-        result.sort(key=lambda x: -x['score'])
+        result.sort(key=lambda x: x['avg_total_seg'])
         return jsonify({'success': True, 'data': result}), 200
     except Exception as e:
         import traceback
@@ -5782,8 +5779,6 @@ def report_tempo_espera_filiais():
             avg_espera = float(row[2] or 0)
             avg_chat   = float(row[3] or 0)
             total_med  = avg_espera + avg_chat
-            # Score puro por tempo médio (sem peso de volume) — quanto menor o tempo, maior o score.
-            score      = 10000 / (total_med + 1) if total > 0 else 0
             partes     = sf.split(':', 1) if ':' in sf else [sf, '-']
             setor      = partes[0].strip()
             filial     = partes[1].strip() if len(partes) > 1 else '-'
@@ -5793,25 +5788,21 @@ def report_tempo_espera_filiais():
                 'setor': setor, 'total_atendidos': total,
                 'avg_espera_seg': round(avg_espera, 0),
                 'avg_chat_seg':   round(avg_chat, 0),
-                'avg_total_seg':  round(total_med, 0),
-                'score': round(score, 1)
+                'avg_total_seg':  round(total_med, 0)
             })
         result = []
         for filial, setores in filiais.items():
-            setores.sort(key=lambda x: -x['score'])
+            setores.sort(key=lambda x: x['avg_total_seg'])
             total_f    = sum(s['total_atendidos'] for s in setores)
             avg_esp_f  = sum(s['avg_espera_seg'] * s['total_atendidos'] for s in setores) / total_f if total_f else 0
             avg_chat_f = sum((s['avg_chat_seg'] or 0) * s['total_atendidos'] for s in setores) / total_f if total_f else 0
-            # Score puro por tempo médio (sem peso de volume) — consistente com o score por setor/atendente.
-            score_f    = 10000 / (avg_esp_f + avg_chat_f + 1) if total_f > 0 else 0
             result.append({
                 'filial': filial, 'total_atendidos': total_f,
                 'avg_espera_seg': round(avg_esp_f, 0),
                 'avg_chat_seg':   round(avg_chat_f, 0),
-                'score': round(score_f, 1),
                 'setores': setores
             })
-        result.sort(key=lambda x: -x['score'])
+        result.sort(key=lambda x: x['avg_espera_seg'] + x['avg_chat_seg'])
         return jsonify({'success': True, 'data': result}), 200
     except Exception as e:
         import traceback

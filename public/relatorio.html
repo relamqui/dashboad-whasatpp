@@ -95,13 +95,6 @@
     .nps-bar-fill.detr { background:var(--red); }
     .nps-bar-count { width:22px; text-align:right; color:var(--text-secondary); }
 
-    .score-badge { display:inline-flex; flex-direction:column; align-items:center; justify-content:center; min-width:52px; height:52px; border-radius:10px; font-weight:800; border:2px solid; padding:0 8px; }
-    .score-badge .sv { font-size:14px; line-height:1; }
-    .score-badge .sl { font-size:9px; opacity:.65; margin-top:2px; text-transform:uppercase; }
-    .score-badge.top { color:var(--green);  border-color:var(--green);  background:rgba(0,200,150,.1); }
-    .score-badge.mid { color:var(--blue);   border-color:var(--blue);   background:rgba(52,152,219,.1); }
-    .score-badge.low { color:var(--yellow); border-color:var(--yellow); background:rgba(245,166,35,.1); }
-    .score-badge.bot { color:var(--red);    border-color:var(--red);    background:rgba(231,76,60,.1); }
 
     .tempo-row { display:flex; align-items:center; justify-content:space-between; padding:7px 0; border-bottom:1px solid rgba(255,255,255,.05); font-size:13px; }
     .tempo-row:last-child { border-bottom:none; }
@@ -275,7 +268,6 @@
     return '<span class="tempo-value '+spC(s)+'">'+fmtS(s)+'</span>';
   }
   function spC(s) { if(!s||s<=0)return''; if(s<120)return'fast'; if(s<600)return'medium'; return'slow'; }
-  function scC(s,a) { const mx=Math.max(...a),p=mx>0?s/mx:0; if(p>=.75)return'top'; if(p>=.5)return'mid'; if(p>=.25)return'low'; return'bot'; }
   function npsC(s) { if(s>=75)return'excelente'; if(s>=50)return'bom'; if(s>=0)return'neutro'; return'ruim'; }
   function mC(n) { if(n>=4.5)return'alta'; if(n>=3)return'media'; return'baixa'; }
   function bp(v,t) { return t>0?Math.round((v/t)*100):0; }
@@ -383,14 +375,9 @@
       if(!r.ok||!j.success){el.innerHTML=errH(j.error||'Erro');return;}
       const d = j.data||[];
       if(!d.length){el.innerHTML=empH('Nenhum registro encontrado.');return;}
-      const allSc = d.map(f=>f.score);
       el.innerHTML = d.map((f,fi)=>{
-        const cls = scC(f.score,allSc);
-        const setSc = f.setores.map(s=>s.score);
         const setoresHtml = f.setores.map(s=>{
-          const sc=scC(s.score,setSc);
-          return '<div class="setor-card"><div class="setor-card-header"><div><div class="setor-name">'+esc(s.setor)+'</div><div class="setor-meta">'+s.total_atendidos+' atendimento(s)</div></div>'
-            +'<div class="score-badge '+sc+'"><span class="sv">'+s.score+'</span><span class="sl">Score</span></div></div>'
+          return '<div class="setor-card"><div class="setor-card-header"><div><div class="setor-name">'+esc(s.setor)+'</div><div class="setor-meta">'+s.total_atendidos+' atendimento(s)</div></div></div>'
             +'<div class="tempo-row"><span class="tempo-label">⏳ Espera média</span><span class="tempo-value '+spC(s.avg_espera_seg)+'">'+fmtS(s.avg_espera_seg)+'</span></div>'
             +'<div class="tempo-row"><span class="tempo-label">💬 Chat médio</span><span class="tempo-value '+spC(s.avg_chat_seg)+'">'+fmtS(s.avg_chat_seg)+'</span></div>'
             +'<div class="tempo-row"><span class="tempo-label">⚡ Total médio</span><span class="tempo-value '+spC(s.avg_total_seg)+'">'+fmtS(s.avg_total_seg)+'</span></div>'
@@ -402,7 +389,7 @@
           +'<div class="filial-header-right">'
           +'<div class="stat-inline"><div class="stat-val tempo-value '+spC(f.avg_espera_seg)+'">⏳ '+fmtS(f.avg_espera_seg)+'</div><div class="stat-lbl">Espera média</div></div>'
           +'<div class="stat-inline"><div class="stat-val tempo-value '+spC(f.avg_chat_seg)+'">💬 '+fmtS(f.avg_chat_seg)+'</div><div class="stat-lbl">Chat médio</div></div>'
-          +'<div class="score-badge '+cls+'"><span class="sv">'+f.score+'</span><span class="sl">Score</span></div>'+chv()+'</div></div>'
+          +chv()+'</div></div>'
           +'<div class="filial-body"><div class="setores-grid">'+setoresHtml+'</div></div></div>';
       }).join('');
     } catch(e){el.innerHTML=errH('Erro de conexão.');}
@@ -418,9 +405,8 @@
       if(!r.ok||!j.success){el.innerHTML=errH(j.error||'Erro');return;}
       const d = j.data||[];
       if(!d.length){el.innerHTML=empH('Nenhum registro encontrado.');return;}
-      const allSc = d.map(r=>r.score);
       el.innerHTML='<div class="ranking-table-wrap"><table class="rtable"><thead><tr>'
-        +'<th>Posição</th><th>Atendente</th><th>Filial</th><th>⏳ Espera Média</th><th>💬 Chat Médio</th><th>⚡ Total Médio</th><th>Atendimentos</th><th>Score</th>'
+        +'<th>Posição</th><th>Atendente</th><th>Filial</th><th>⏳ Espera Média</th><th>💬 Chat Médio</th><th>⚡ Total Médio</th><th>Atendimentos</th>'
         +'</tr></thead><tbody>'+d.map((r,i)=>'<tr>'
           +'<td><div class="rank-pos"><span class="medal">'+(medals[i]||'')+'</span><span>#'+(i+1)+'</span></div></td>'
           +'<td><div class="att-info"><span class="att-name">'+esc(r.atendente)+'</span><span class="att-sub">'+esc(r.setor)+'</span></div></td>'
@@ -429,7 +415,6 @@
           +'<td><span class="tempo-value '+spC(r.avg_chat_seg)+'">'+fmtS(r.avg_chat_seg)+'</span></td>'
           +'<td><span class="tempo-value '+spC(r.avg_total_seg)+'">'+fmtS(r.avg_total_seg)+'</span></td>'
           +'<td style="font-weight:700">'+r.total_atendidos+'</td>'
-          +'<td><div class="score-badge '+scC(r.score,allSc)+'"><span class="sv">'+r.score+'</span><span class="sl">Score</span></div></td>'
           +'</tr>').join('')
         +'</tbody></table></div>';
     } catch(e){el.innerHTML=errH('Erro de conexão.');}
